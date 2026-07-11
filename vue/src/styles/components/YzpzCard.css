@@ -1,0 +1,96 @@
+.func-card {
+    margin-bottom: 20px;
+}
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.card-header span {
+    font-size: 16px;
+    font-weight: bold;
+}
+.step-content {
+    margin: 20px 0;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 8px;
+}
+.step-content h3 {
+    margin-top: 0;
+}
+.step-content p {
+    color: #909399;
+    font-size: 13px;
+    margin: 4px 0 16px;
+}
+.param-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 16px 0;
+}
+.file-section {
+    margin: 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.file-label {
+    font-size: 14px;
+    color: #606266;
+    min-width: 160px;
+}
+.result-ok {
+    color: #67c23a;
+    margin-top: 10px;
+}
+.result-err {
+    color: #f56c6c;
+    margin-top: 10px;
+}
+.result-section {
+    margin: 16px 0;
+    text-align: center;
+}
+.download-btn {
+    margin-top: 12px;
+    width: 220px;
+}
+.log-wrapper {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    z-index: 10;
+    margin-top: 20px;
+    border-top: 1px solid #e4e7ed;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+}
+.log-header {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    gap: 6px;
+    color: #606266;
+    font-size: 14px;
+    user-select: none;
+}
+.log-header .el-icon {
+    transition: transform 0.2s;
+}
+.log-header .is-rotate {
+    transform: rotate(180deg);
+}
+.log-body {
+    margin-top: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.log-body textarea {
+    font-family: monospace;
+    font-size: 12px;
+    background: #f5f7fa;
+}

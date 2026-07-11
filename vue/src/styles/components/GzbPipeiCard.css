@@ -1,0 +1,151 @@
+.func-card {
+    margin-bottom: 20px;
+}
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.card-header span {
+    font-size: 16px;
+    font-weight: bold;
+}
+.step-body {
+    margin-top: 16px;
+}
+.form-row {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+}
+.preview-box {
+    margin-top: 12px;
+}
+.mapping-box {
+    display: flex;
+    gap: 16px; margin-top: 12px;
+}
+.mapping-col {
+    flex: 1;
+    min-width: 160px;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 10px;
+}
+.mapping-op {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+}
+.mapping-op .el-button {
+    width: 120px;
+    margin: 0 !important;
+    padding: 8px 15px !important;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.mapping-result {
+    flex: 1.2;
+    min-width: 200px;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 10px;
+}
+.mapping-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.field-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+.field-item {
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+.field-item:hover {
+    background: #f5f7fa;
+}
+.field-item.active {
+    background: #ecf5ff;
+    color: #409eff;
+    font-weight: bold;
+}
+.mapping-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.step-actions {
+    margin-top: 20px;
+    text-align: center;
+}
+.result-section {
+    margin-top: 20px;
+    text-align: center;
+}
+.download-btn {
+    margin-top: 12px;
+    width: 220px;
+}
+
+/* 上传区域居中 */
+.upload-single-center {
+    display: flex;
+    justify-content: center;
+}
+
+/* 配置区域双栏 */
+.config-two-panels {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    min-height: 200px;
+}
+.config-panel {
+    flex: 1 1 0;
+    min-width: 0;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    padding: 16px;
+    background: #fafafa;
+    max-height: 500px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.preview-box {
+    margin-top: 12px;
+    overflow-x: auto;
+}
+.preview-box .el-table {
+    width: 100% !important;
+}
+.config-title {
+    font-weight: bold;
+    font-size: 15px;
+    margin-bottom: 12px;
+    color: #303133;
+    border-bottom: 1px solid #e4e7ed;
+    padding-bottom: 8px;
+}
+
+/* 表头行选择 */
+.header-label {
+    font-weight: bold;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #606266;
+}
+.preview-text {
+    margin-left: 8px;
+    color: #909399;
+    font-size: 12px;
+    font-family: 'Consolas', monospace;
+}

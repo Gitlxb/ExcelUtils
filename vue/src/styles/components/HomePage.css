@@ -1,0 +1,382 @@
+/* ==============================
+   HomePage 主页样式
+   ============================== */
+
+/* 页面容器 — 填充全部可用宽度 */
+.home-page {
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* 区块通用 */
+.home-section {
+  margin-bottom: 40px;
+}
+
+/* 区块标题行 */
+.section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.section-tag {
+  display: inline-block;
+  padding: 6px 20px;
+  border: 2px solid #c45650;
+  color: #c45650;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 4px;
+  white-space: nowrap;
+  margin-right: 16px;
+}
+
+.section-line {
+  flex: 1;
+  height: 2px;
+  background-color: #c45650;
+}
+
+/* 浙江锦途 - 简介区域 */
+.section-intro {
+  color: #606266;
+}
+
+.intro-text {
+  font-size: 15px;
+  color: #606266;
+  line-height: 2;
+  text-align: justify;
+  text-indent: 2em;
+  margin: 0;
+}
+
+/* 产品与服务 - 轮播服务卡片 */
+.service-card {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 24px 32px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.service-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.service-desc {
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.8;
+  margin-bottom: 16px;
+}
+
+.service-desc .highlight {
+  color: #c45650;
+  font-weight: 600;
+}
+
+.service-img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+  margin-top: auto;
+}
+
+/* 灵活用工卡片 — 图片填充剩余空间，不变形 */
+.staffing-card .staffing-img {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 税务筹划卡片 — 同上，图片紧贴文字填充 */
+.tax-card .tax-img {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 中高级人才搜寻卡片 — 同上 */
+.talent-card .talent-img {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 劳务派遣服务卡片 — 同上 */
+.dispatch-card .dispatch-img {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 招聘流程外包卡片 — 同上 */
+.rpo-card .rpo-img {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 生产工序外包卡片 — 同上 */
+.process-card .process-img {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+/* 典型案例 - 案例卡片网格 */
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.case-card {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-align: center;
+  padding: 20px 16px 16px;
+}
+
+.case-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.case-img {
+  width: 100%;
+  height: 200px;
+  object-fit: contain;
+  margin-bottom: 12px;
+}
+
+.case-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+/* 案例详情弹窗内容 */
+.case-detail-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.case-detail-section {
+  margin-bottom: 20px;
+}
+
+.case-detail-subtitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 8px;
+}
+
+.case-detail-text {
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.8;
+  text-align: justify;
+}
+
+.case-detail-img {
+  width: 100%;
+  margin-top: 16px;
+  border-radius: 6px;
+}
+
+/* 服务优势 */
+.advantage-intro {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 24px 32px;
+  margin-bottom: 24px;
+}
+
+.advantage-block {
+  margin-bottom: 20px;
+}
+
+.advantage-block:last-child {
+  margin-bottom: 0;
+}
+
+.advantage-block-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.advantage-item {
+  margin-bottom: 12px;
+  padding-left: 16px;
+}
+
+.advantage-item:last-child {
+  margin-bottom: 0;
+}
+
+.advantage-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.advantage-item-text {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+  text-align: justify;
+}
+
+.advantage-row {
+  display: flex;
+  gap: 24px;
+}
+
+.advantage-col {
+  flex: 1;
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+
+.advantage-col-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.advantage-col-item {
+  margin-bottom: 12px;
+}
+
+.advantage-col-item:last-child {
+  margin-bottom: 0;
+}
+
+.advantage-col-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.advantage-col-text {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+  text-align: justify;
+}
+
+.advantage-cert-img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 6px;
+  margin-top: 12px;
+}
+
+/* ==============================
+   企业资质 - 2×3 卡片网格
+   ============================== */
+.qualification-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.qualification-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.25s, box-shadow 0.25s;
+  padding: 12px;
+}
+
+.qualification-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.qualification-img {
+  width: 100%;
+  height: 320px;
+  object-fit: contain;
+  display: block;
+  border-radius: 4px;
+}
+
+/* ==============================
+   企业荣誉 - CSS 无缝滚动轮播
+   ============================== */
+.honor-scroll-wrapper {
+  overflow: hidden;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.honor-scroll-track {
+  display: flex;
+  gap: 14px;
+  animation: honorScroll 35s linear infinite;
+}
+
+.honor-scroll-track:hover {
+  animation-play-state: paused;
+}
+
+.honor-img {
+  height: 200px;
+  width: auto;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s;
+}
+
+.honor-img:hover {
+  transform: scale(1.05);
+}
+
+@keyframes honorScroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}

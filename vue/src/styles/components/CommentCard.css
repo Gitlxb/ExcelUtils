@@ -1,0 +1,46 @@
+.func-card {
+    margin-bottom: 20px;
+}
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.card-header span {
+    font-size: 16px;
+    font-weight: bold;
+}
+.action-section {
+    margin: 16px 0;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.action-section .el-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: auto;
+    padding: 16px 24px;
+}
+.btn-desc {
+    font-size: 12px;
+    font-weight: normal;
+    margin-top: 6px;
+    color: rgba(255,255,255,0.9);
+}
+.progress-section {
+    margin: 16px 0;
+}
+.result-section {
+    margin: 16px 0;
+    text-align: center;
+}
+.download-btn {
+    margin-top: 12px;
+    width: 220px;
+}
+.result-err {
+    color: #f56c6c;
+    margin-top: 12px;
+}
