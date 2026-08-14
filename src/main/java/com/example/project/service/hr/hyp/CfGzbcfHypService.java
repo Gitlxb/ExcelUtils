@@ -1,4 +1,4 @@
-package com.example.project.service.hr;
+package com.example.project.service.hr.hyp;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -482,25 +482,58 @@ public class CfGzbcfHypService {
 
     // ========================================================================
     //  个税公式填充
+    //  对齐 Python：按表头名动态定位依赖列（替代硬编码 AK/AJ/AT/AM/AN），
+    //  缺失时保留原表"个税"列数值并写日志，不覆盖。
     // ========================================================================
+
+    /** 个税公式依赖字段 -> 表头名（与 Python tax_field_headers 对齐） */
+    private static final Map<String, String> TAX_FIELD_HEADERS = Map.of(
+            "taxable_base",        "税前工资",
+            "subtract_deduction",  "专项附加扣除",
+            "subtract_allowance",  "通讯费",
+            "add_social",          "社保个人扣款",
+            "add_fund",            "公积金扣款-个人"
+    );
+
     private void fillTaxFormula(Sheet newSheet, Map<String, List<Integer>> colNameMap, int newDataLastRow) {
         List<Integer> taxCols = colNameMap.get("个税");
         if (taxCols == null || taxCols.isEmpty()) return;
         int taxCol = taxCols.get(0);
+
+        // 按表头名动态定位各依赖列
+        Map<String, Integer> taxFieldCols = new HashMap<>();
+        List<String> taxMissing = new ArrayList<>();
+        for (Map.Entry<String, String> entry : TAX_FIELD_HEADERS.entrySet()) {
+            List<Integer> cols = colNameMap.get(entry.getValue());
+            if (cols != null && !cols.isEmpty()) {
+                taxFieldCols.put(entry.getKey(), cols.get(0));
+            } else {
+                taxMissing.add(entry.getValue());
+            }
+        }
+        if (!taxMissing.isEmpty()) {
+            System.out.println("[WARN] 个税依赖列未全部定位（缺失 " + taxMissing + "），保留原表'个税'列数值，未覆盖写入公式");
+            return;
+        }
+
+        String tb = getColumnLetter(taxFieldCols.get("taxable_base"));        // 税前工资
+        String sd = getColumnLetter(taxFieldCols.get("subtract_deduction"));  // 专项附加扣除
+        String ea = getColumnLetter(taxFieldCols.get("subtract_allowance"));  // 通讯费
+        String sp = getColumnLetter(taxFieldCols.get("add_social"));          // 社保个人扣款
+        String fp = getColumnLetter(taxFieldCols.get("add_fund"));            // 公积金扣款-个人
 
         for (int r = 2; r <= newDataLastRow; r++) {
             Row row = newSheet.getRow(r);
             if (row == null) continue;
             Cell cell = row.getCell(taxCol);
             if (cell == null) cell = row.createCell(taxCol);
-            // r是0-based，Excel行号=r+1
-            int excelRow = r + 1;
+            int excelRow = r + 1;  // r 是 0-based，Excel 行号 = r+1
             cell.setCellFormula(
-                "-ROUND(MAX((AK" + excelRow
-                + "-5000-AJ" + excelRow
-                + "-AT" + excelRow
-                + "+AM" + excelRow
-                + "+AN" + excelRow
+                "-ROUND(MAX((" + tb + excelRow
+                + "-5000-" + sd + excelRow
+                + "-" + ea + excelRow
+                + "+" + sp + excelRow
+                + "+" + fp + excelRow
                 + ")*{3,10,20,25,30,35,45}%-5*{0,42,282,532,882,1432,3032},),2)"
             );
         }
@@ -508,6 +541,7 @@ public class CfGzbcfHypService {
 
     // ========================================================================
     //  社保公式条件填充
+    //  对齐 Python：动态定位"身份证编号"列（替代硬编码 E 列），找不到时回退 E 列。
     // ========================================================================
     private void fillSocialSecurityFormulas(Sheet newSheet, Map<String, List<Integer>> colNameMap,
                                              int newDataLastRow, int midCol) {
@@ -518,6 +552,16 @@ public class CfGzbcfHypService {
 
         int ssPersonalCol = ssPersonalCols.get(0);
         int ssCompanyCol = ssCompanyCols.get(ssCompanyCols.size() - 1);
+
+        // 动态定位"身份证编号"列；缺失时回退 E 列
+        String idLetter;
+        List<Integer> idCols = colNameMap.get("身份证编号");
+        if (idCols != null && !idCols.isEmpty()) {
+            idLetter = getColumnLetter(idCols.get(0));
+        } else {
+            idLetter = "E";
+            System.out.println("[WARN] 未找到'身份证编号'列，社保 XLOOKUP 查找键回退为 E 列");
+        }
 
         for (int r = 2; r <= newDataLastRow; r++) {
             Row row = newSheet.getRow(r);
@@ -535,17 +579,17 @@ public class CfGzbcfHypService {
 
             if (hasData) {
                 int excelRow = r + 1;
-                // 社保单位扣款 (AS列)
+                // 社保单位扣款（"社保单位扣款"列中最右一列）
                 Cell companyCell = row.getCell(ssCompanyCol);
                 if (companyCell == null) companyCell = row.createCell(ssCompanyCol);
                 companyCell.setCellFormula(
-                    "XLOOKUP(E" + excelRow + ",社保!$A$2:$A$110,-社保!$C$2:$C$110,0)");
+                    "XLOOKUP(" + idLetter + excelRow + ",社保!$A$2:$A$110,-社保!$C$2:$C$110,0)");
 
                 // 社保个人扣款（覆盖原值）
                 Cell pCell = row.getCell(ssPersonalCol);
                 if (pCell == null) pCell = row.createCell(ssPersonalCol);
                 pCell.setCellFormula(
-                    "XLOOKUP(E" + excelRow + ",社保!$A$2:$A$110,-社保!$D$2:$D$110,0)");
+                    "XLOOKUP(" + idLetter + excelRow + ",社保!$A$2:$A$110,-社保!$D$2:$D$110,0)");
             }
         }
     }

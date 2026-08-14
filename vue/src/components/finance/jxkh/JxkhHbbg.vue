@@ -4,7 +4,7 @@
     <div class="func-page-header">
       <h2 class="func-page-title">合并表格</h2>
       <p class="func-page-desc">
-        绩效考核表的合并工具。支持处理模式（填月份列）和通用合并模式（原样堆叠），可配置表头行、跳过行数、间隔行数、列移动等参数。
+        绩效考核表的合并工具。支持处理模式（填月份列）、通用合并（原样堆叠）和多表合并（删列+标注）三种模式。
       </p>
     </div>
 
@@ -12,6 +12,7 @@
     <el-radio-group v-model="hbbgMode" @change="onHbbgModeChange" style="margin-bottom:12px">
       <el-radio-button value="process">处理模式（填月份列）</el-radio-button>
       <el-radio-button value="generic">通用合并（原样堆叠）</el-radio-button>
+      <el-radio-button value="custom">多表合并（删列+标注）</el-radio-button>
     </el-radio-group>
 
     <!-- 文件选择 -->
@@ -83,10 +84,55 @@
       </div>
     </el-form>
 
+    <!-- 多表合并模式参数 -->
+    <el-form v-if="hbbgMode === 'custom'" label-width="120px" style="margin-top:12px">
+      <el-form-item label="删除起始列">
+        <el-input v-model="formHbbg.deleteColLetter" placeholder="如 AT" style="width: 120px" />
+        <span style="margin-left:8px;color:#888;font-size:12px">含该列及之后所有列</span>
+      </el-form-item>
+      <el-form-item label="公司命名列">
+        <el-input v-model="formHbbg.sheetNameColLetter" placeholder="如 AR" style="width: 120px" />
+        <span style="margin-left:8px;color:#888;font-size:12px">列（所有数据行在该列写入工作表名，用于追溯来源）</span>
+      </el-form-item>
+      <el-form-item label="表头行数">
+        <el-input-number v-model="formHbbg.headerRows" :min="1" :max="100" style="width:120px" />
+        <span style="margin-left:8px;color:#888;font-size:12px">行（首个工作表保留全部，其余跳过前N行）</span>
+      </el-form-item>
+
+      <!-- 工作表勾选 -->
+      <el-form-item label="勾选工作表">
+        <div style="width:100%">
+          <el-button-group style="margin-bottom:8px">
+            <el-button size="small" @click="selectAllSheets">全选</el-button>
+            <el-button size="small" @click="clearAllSheets">清空</el-button>
+          </el-button-group>
+          <el-tree
+            ref="sheetTree"
+            :data="sheetTreeData"
+            show-checkbox
+            node-key="key"
+            :props="{ label: 'label', children: 'children' }"
+            @check-change="onSheetCheckChange"
+            style="border:1px solid #dcdfe6;border-radius:4px;padding:8px;max-height:260px;overflow-y:auto"
+          >
+            <template #default="{ node, data }">
+              <span style="font-size:13px">
+                <span v-if="node.level === 1" style="font-weight:600">📁 {{ data.label }}</span>
+                <span v-else>{{ data.label }}<span v-if="data.hidden" style="color:#909399;font-size:11px">（隐藏）</span></span>
+              </span>
+            </template>
+          </el-tree>
+        </div>
+      </el-form-item>
+    </el-form>
+
     <el-button type="success" :loading="loading" @click="submitHbbg" style="margin-top:12px">
       开始合并
     </el-button>
     <el-progress v-if="hbbgProgress > 0 && hbbgProgress < 100" :percentage="Math.round(hbbgProgress)" style="margin-top:8px" />
+    <div v-if="processingHint" style="margin-top:8px;color:#e6a23c;font-size:13px">
+      {{ processingHint }}
+    </div>
 
     <!-- 下载区域 -->
     <el-card v-if="downloadFileName" style="margin-top: 16px">
@@ -123,13 +169,18 @@ export default {
       hbbgFiles: [],
       hbbgMode: 'process',
       hbbgProgress: 0,
+      processingHint: '',
       formHbbg: {
         targetCol: '',
         gapRows: 0,
         keepHeaderFile: '',
         skipRows: 1,
-        shiftRules: []
-      }
+        shiftRules: [],
+        deleteColLetter: '',
+        sheetNameColLetter: '',
+        headerRows: 5
+      },
+      sheetTreeData: []
     }
   },
   computed: {
@@ -140,6 +191,9 @@ export default {
   methods: {
     handleHbbgFilesChange(file, fileList) {
       this.hbbgFiles = fileList.map(f => f.raw)
+      if (this.hbbgMode === 'custom') {
+        this.loadSheetsPreview()
+      }
     },
     showMessage(text, type = 'info') {
       this.message = text
@@ -149,7 +203,11 @@ export default {
       this.downloadFileName = ''
       this.message = ''
       this.hbbgProgress = 0
+      this.processingHint = ''
       this.formHbbg.shiftRules = []
+      if (this.hbbgMode === 'custom' && this.hbbgFiles.length > 0) {
+        this.loadSheetsPreview()
+      }
     },
     addShiftRule() {
       this.formHbbg.shiftRules.push({
@@ -196,6 +254,28 @@ export default {
         }
         formData.append('targetCol', this.formHbbg.targetCol)
         this.post('/api/finance/jxkh/hbbg', formData)
+      } else if (this.hbbgMode === 'custom') {
+        if (!this.formHbbg.deleteColLetter || !this.formHbbg.sheetNameColLetter) {
+          this.showMessage('请填写删除起始列和公司命名列', 'warning')
+          return
+        }
+        const checkedNodes = this.$refs.sheetTree.getCheckedNodes(true)
+        const sheetNodes = checkedNodes.filter(n => !n.children || n.children.length === 0)
+        if (sheetNodes.length === 0) {
+          this.showMessage('请至少勾选一个工作表', 'warning')
+          return
+        }
+        const selections = sheetNodes.map(n => ({ fileName: n.fileName, sheetName: n.sheetName }))
+        formData.append('sheetSelections', JSON.stringify(selections))
+        formData.append('deleteColLetter', this.formHbbg.deleteColLetter)
+        formData.append('sheetNameColLetter', this.formHbbg.sheetNameColLetter)
+        formData.append('headerRows', this.formHbbg.headerRows)
+        this.hbbgProgress = 5
+        this.processingHint = '正在处理，大文件（如 27MB）解析与合并可能需要 1~2 分钟，请勿关闭页面...'
+        this.post('/api/finance/jxkh/hbbg-custom', formData, () => {
+          this.hbbgProgress = 100
+          this.processingHint = ''
+        })
       } else {
         formData.append('gapRows', this.formHbbg.gapRows)
         formData.append('keepHeaderFile', this.formHbbg.keepHeaderFile || '')
@@ -217,13 +297,57 @@ export default {
           this.downloadFileName = res.data.fileName
           if (typeof onSuccess === 'function') onSuccess(res)
         } else {
+          this.processingHint = ''
+          this.hbbgProgress = 0
           this.showMessage(res.data.message || '处理失败', 'error')
         }
       }).catch(err => {
+        this.processingHint = ''
+        this.hbbgProgress = 0
         this.showMessage(err.response?.data?.message || err.message, 'error')
       }).finally(() => {
         this.loading = false
       })
+    },
+    loadSheetsPreview() {
+      if (this.hbbgFiles.length === 0) { this.sheetTreeData = []; return }
+      const formData = new FormData()
+      this.hbbgFiles.forEach(f => formData.append('files', f))
+      axios.post('/api/finance/jxkh/hbbg-sheets', formData).then(res => {
+        if (res.data.success) {
+          const sheets = res.data.sheets
+          this.sheetTreeData = Object.entries(sheets).map(([fileName, sheetList]) => ({
+            key: 'file_' + fileName,
+            label: fileName,
+            children: sheetList.map(s => ({
+              key: fileName + '|||' + s.name,
+              label: s.name,
+              fileName: fileName,
+              sheetName: s.name,
+              hidden: s.hidden
+            }))
+          }))
+        }
+      }).catch(err => {
+        this.showMessage('读取工作表列表失败：' + (err.response?.data?.message || err.message), 'error')
+      })
+    },
+    selectAllSheets() {
+      const checkKeys = []
+      for (const node of this.sheetTreeData) {
+        if (node.children) {
+          for (const child of node.children) {
+            checkKeys.push(child.key)
+          }
+        }
+      }
+      this.$refs.sheetTree.setCheckedKeys(checkKeys)
+    },
+    clearAllSheets() {
+      this.$refs.sheetTree.setCheckedKeys([])
+    },
+    onSheetCheckChange() {
+      // 树勾选状态已由 el-tree 管理，此钩子仅作预留
     },
     downloadFile(fileName) {
       const url = '/api/finance/download/' + encodeURIComponent(fileName)

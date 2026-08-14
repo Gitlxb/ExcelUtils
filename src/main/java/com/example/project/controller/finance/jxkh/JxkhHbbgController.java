@@ -1,6 +1,7 @@
 package com.example.project.controller.finance.jxkh;
 
 import com.example.project.controller.finance.FinanceBaseController;
+import com.example.project.service.finance.jxkh.JxkhHbbgCustomMergeEngine;
 import com.example.project.service.finance.jxkh.JxkhHbbgService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -76,6 +78,65 @@ public class JxkhHbbgController extends FinanceBaseController {
             String outputPath = jxkhHbbgService.genericMerge(files, uploadDir, gapRows, keepHeaderFile, skipRows, shiftRules);
             result.put("success", true);
             result.put("message", "通用合并完成");
+            result.put("fileName", new File(outputPath).getName());
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "合并失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * POST /api/finance/jxkh/hbbg-sheets
+     * 功能：列出上传文件中所有工作表（用于多表合并模式的工作表勾选）
+     */
+    @PostMapping("/jxkh/hbbg-sheets")
+    public Map<String, Object> jxkhHbbgSheets(@RequestParam("files") List<MultipartFile> files) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            Map<String, List<JxkhHbbgCustomMergeEngine.SheetInfo>> sheetMap = new LinkedHashMap<>();
+            for (MultipartFile file : files) {
+                List<JxkhHbbgCustomMergeEngine.SheetInfo> sheets = JxkhHbbgCustomMergeEngine.listSheets(file);
+                String name = file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown";
+                sheetMap.put(name, sheets);
+            }
+            result.put("success", true);
+            result.put("sheets", sheetMap);
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "读取工作表列表失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * POST /api/finance/jxkh/hbbg-custom
+     * 功能：多表合并（删列+公司命名），纯数据输出
+     */
+    @PostMapping("/jxkh/hbbg-custom")
+    public Map<String, Object> jxkhHbbgCustom(
+            @RequestParam("files") List<MultipartFile> files,
+            @RequestParam("sheetSelections") String sheetSelectionsJson,
+            @RequestParam("deleteColLetter") String deleteColLetter,
+            @RequestParam("sheetNameColLetter") String sheetNameColLetter,
+            @RequestParam(value = "headerRows", defaultValue = "5") int headerRows) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            File dir = new File(uploadDir);
+            if (!dir.exists()) dir.mkdirs();
+
+            // 解析 sheetSelections JSON
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<JxkhHbbgCustomMergeEngine.SheetSelection> selections = mapper.readValue(
+                sheetSelectionsJson,
+                new com.fasterxml.jackson.core.type.TypeReference<List<JxkhHbbgCustomMergeEngine.SheetSelection>>() {}
+            );
+
+            String outputPath = jxkhHbbgService.customMerge(
+                files, selections, deleteColLetter, sheetNameColLetter, headerRows, uploadDir
+            );
+            result.put("success", true);
+            result.put("message", "多表合并完成");
             result.put("fileName", new File(outputPath).getName());
         } catch (Exception e) {
             result.put("success", false);

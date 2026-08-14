@@ -10,8 +10,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 财务工具箱 - 预支处理（手续费拆分）
- * 基于 yuzhi_frame.py 重构，与原有 ShouxufeiCfService 逻辑等价
+ * 财务工具箱 - 预支处理
+ * 基于 yuzhi_frame.py 重构，含 8 条手续费规则
  */
 @Service
 public class CwgjxYuzhiService {
@@ -70,6 +70,15 @@ public class CwgjxYuzhiService {
                 if (c.contains("伟明") && h.contains("招商银行") && i.contains("垫付")) zero = true;
                 if (c.contains("瑞立") && (h.contains("招商银行") || h.contains("邮政"))) zero = true;
                 if (c.contains("中世")) zero = true;
+                // 规则7: 温州长江汽车电子 + 民生银行 -> 免手续费；其余银行 -> 5元
+                if (c.contains("温州长江汽车电子") && h.contains("民生银行")) zero = true;
+                if (c.contains("温州长江汽车电子") && !h.contains("民生银行")) {
+                    Cell e = row.getCell(colE);
+                    if (e == null) e = row.createCell(colE);
+                    e.setCellValue(5);
+                }
+                // 规则8: 中铭工程 + 招商银行/垫付 -> 免手续费
+                if (c.contains("中铭工程") && (h.contains("招商银行") || i.contains("垫付"))) zero = true;
                 if (zero) {
                     Cell e = row.getCell(colE);
                     if (e == null) e = row.createCell(colE);
@@ -84,8 +93,14 @@ public class CwgjxYuzhiService {
                 Cell e = row.getCell(colE);
                 if (e == null || e.getCellType() == CellType.BLANK) {
                     double d = getDbl(row, colD);
+                    String c = getStr(row, colC);
                     if (e == null) e = row.createCell(colE);
-                    e.setCellValue(d <= 500 ? 5 : d * 0.01);
+                    // 规则8: 中铭工程 特殊费率（仅对未命中免扣条件的行生效）
+                    if (c.contains("中铭工程")) {
+                        e.setCellValue(d <= 1000 ? 10 : d * 0.01);
+                    } else {
+                        e.setCellValue(d <= 500 ? 5 : d * 0.01);
+                    }
                 }
             }
 
@@ -210,6 +225,14 @@ public class CwgjxYuzhiService {
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
                     if (cVal.contains("中世"))
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
+                    // 规则7标黄: 温州长江汽车电子 + 民生银行 -> 黄色标记 D/E/F/G/H 列
+                    if (cVal.contains("温州长江汽车电子") && hVal.contains("民生银行"))
+                        for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
+                    // 规则8标黄: 中铭工程 + 招商银行 -> D/E/F/G/H; 中铭工程 + 垫付 -> D/E/F/G/H/I
+                    if (cVal.contains("中铭工程") && hVal.contains("招商银行"))
+                        for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
+                    if (cVal.contains("中铭工程") && iVal.contains("垫付"))
+                        for (int c : new int[]{3,4,5,6,7,8}) setStyle(row, c, yellow);
                 }
 
                 // J/K重复值

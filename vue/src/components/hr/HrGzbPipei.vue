@@ -156,6 +156,20 @@
 
         <!-- 步骤1：字段映射 -->
         <div v-if="modeAStep === 1" class="step-body">
+          <div class="key-config">
+            <div class="form-row">
+              <span class="header-label">甲方关键列：</span>
+              <el-select v-model="jiaKey" placeholder="选择关键列（用于行匹配）" style="width: 220px">
+                <el-option v-for="h in jiaHeaders" :key="h" :label="h" :value="h" />
+              </el-select>
+            </div>
+            <div class="form-row">
+              <span class="header-label">内部关键列：</span>
+              <el-select v-model="neiKey" placeholder="选择关键列（用于行匹配）" style="width: 220px">
+                <el-option v-for="h in neiHeaders" :key="h" :label="h" :value="h" />
+              </el-select>
+            </div>
+          </div>
           <div class="mapping-box">
             <div class="mapping-col">
               <div class="mapping-title">甲方字段</div>
@@ -247,6 +261,7 @@
           >
             <div>甲方：{{ jiaSheet }}（表头第{{ jiaHeaderRow }}行）</div>
             <div>内部：{{ neiSheet }}（表头第{{ neiHeaderRow }}行）</div>
+            <div>关键列：甲方「{{ jiaKey }}」 ↔ 内部「{{ neiKey }}」</div>
             <div>映射数：{{ fieldMappings.length }} 组</div>
           </el-alert>
           <div class="step-actions">
@@ -390,6 +405,20 @@
 
         <!-- 步骤1：字段映射 -->
         <div v-if="modeBStep === 1" class="step-body">
+          <div class="key-config">
+            <div class="form-row">
+              <span class="header-label">工作簿A关键列：</span>
+              <el-select v-model="keyA" placeholder="选择关键列（用于行匹配）" style="width: 220px">
+                <el-option v-for="h in headersA" :key="h" :label="h" :value="h" />
+              </el-select>
+            </div>
+            <div class="form-row">
+              <span class="header-label">工作簿B关键列：</span>
+              <el-select v-model="keyB" placeholder="选择关键列（用于行匹配）" style="width: 220px">
+                <el-option v-for="h in headersB" :key="h" :label="h" :value="h" />
+              </el-select>
+            </div>
+          </div>
           <div class="mapping-box">
             <div class="mapping-col">
               <div class="mapping-title">工作表A字段</div>
@@ -481,6 +510,7 @@
           >
             <div>工作表A：{{ sheetA }}（表头第{{ headerA }}行）</div>
             <div>工作表B：{{ sheetB }}（表头第{{ headerB }}行）</div>
+            <div>关键列：A「{{ keyA }}」 ↔ B「{{ keyB }}」</div>
             <div>映射数：{{ fieldMappingsB.length }} 组</div>
           </el-alert>
           <div class="step-actions">
@@ -495,11 +525,30 @@
 
     <div v-if="downloadUrl" class="result-section">
       <el-alert
-        :title="`处理完成！共对比 ${compareRows} 行数据，发现 ${diffCount} 个差异单元格`"
+        :title="`处理完成！共匹配 ${compareRows} 人，发现 ${diffCount} 个差异单元格`"
         type="success"
         :closable="false"
         show-icon
       />
+      <div v-if="totalInfo" class="result-detail">
+        <div class="detail-line">
+          <span>基准表数据行：{{ totalInfo.baseDataRows }} 人{{ totalInfo.baseHasTotal ? '（含合计）' : '' }}</span>
+          <span>目标表数据行：{{ totalInfo.targetDataRows }} 人{{ totalInfo.targetHasTotal ? '（含合计）' : '' }}</span>
+        </div>
+        <div class="detail-line" v-if="totalInfo.baseHasTotal || totalInfo.targetHasTotal">
+          <span v-if="totalInfo.participated" class="ok">合计行参与对比（两边数据行数相等）</span>
+          <span v-else class="warn">合计行未参与对比（仅一侧有合计，或两边数据行数不等）</span>
+        </div>
+        <div class="detail-line" v-if="unmatchedKeys.length">
+          <span class="warn">基准表未匹配人员（{{ unmatchedKeys.length }} 人）：{{ unmatchedKeys.join('、') }}</span>
+        </div>
+        <div class="detail-line" v-if="totalInfo.extraTargetKeys && totalInfo.extraTargetKeys.length">
+          <span class="warn">目标表多出未参与匹配人员（{{ totalInfo.extraTargetKeys.length }} 人）：{{ totalInfo.extraTargetKeys.join('、') }}</span>
+        </div>
+        <div class="detail-line" v-if="!unmatchedKeys.length && !(totalInfo.extraTargetKeys && totalInfo.extraTargetKeys.length)">
+          <span class="ok">所有人员均已完成匹配</span>
+        </div>
+      </div>
       <el-button type="primary" @click="downloadFile" class="download-btn">
         <el-icon><Download /></el-icon> 下载匹配结果
       </el-button>
@@ -523,6 +572,8 @@ export default {
       errorMsg: '',
       compareRows: 0,
       diffCount: 0,
+      unmatchedKeys: [],
+      totalInfo: null,
 
       // 模式A
       modeAStep: 0,
@@ -532,6 +583,7 @@ export default {
       jiaHeaderRow: null,
       jiaPreviewRows: [],
       jiaHeaders: [],
+      jiaKey: '',
       selectedJiaField: '',
       neiFile: null,
       neiSheets: [],
@@ -539,6 +591,7 @@ export default {
       neiHeaderRow: null,
       neiPreviewRows: [],
       neiHeaders: [],
+      neiKey: '',
       selectedNeiField: '',
       fieldMappings: [],
 
@@ -550,11 +603,13 @@ export default {
       headerA: null,
       previewA: [],
       headersA: [],
+      keyA: '',
       selectedAField: '',
       sheetB: '',
       headerB: null,
       previewB: [],
       headersB: [],
+      keyB: '',
       selectedBField: '',
       fieldMappingsB: []
     }
@@ -616,6 +671,15 @@ export default {
       this.errorMsg = ''
       this.compareRows = 0
       this.diffCount = 0
+      this.unmatchedKeys = []
+      this.totalInfo = null
+    },
+
+    // 智能推荐关键列：优先含「姓名/名字/名称」的字段，否则取第一项
+    autoPickKey(headers) {
+      if (!headers || !headers.length) return ''
+      const hit = headers.find((h) => h.includes('姓名') || h.includes('名字') || h.includes('名称'))
+      return hit || headers[0]
     },
 
     // ---------- 模式A ----------
@@ -687,6 +751,8 @@ export default {
         this.neiSheet,
         this.neiHeaderRow
       )
+      this.jiaKey = this.autoPickKey(this.jiaHeaders)
+      this.neiKey = this.autoPickKey(this.neiHeaders)
       this.modeAStep = 1
     },
 
@@ -694,6 +760,8 @@ export default {
       this.modeAStep = 0
       this.jiaHeaders = []
       this.neiHeaders = []
+      this.jiaKey = ''
+      this.neiKey = ''
       this.selectedJiaField = ''
       this.selectedNeiField = ''
       this.fieldMappings = []
@@ -738,12 +806,16 @@ export default {
         formData.append('neiSheet', this.neiSheet)
         formData.append('jiaHeaderRow', this.jiaHeaderRow)
         formData.append('neiHeaderRow', this.neiHeaderRow)
+        formData.append('jiaKey', this.jiaKey)
+        formData.append('neiKey', this.neiKey)
         formData.append('fieldMapping', JSON.stringify(this.fieldMappings))
         const res = await axios.post('/api/hr/gzb-pipei/mode-a', formData)
         if (res.data.success) {
           this.downloadUrl = `/api/hr/download/${res.data.fileName}`
           this.compareRows = res.data.compareRows
           this.diffCount = res.data.diffCount
+          this.unmatchedKeys = res.data.unmatchedKeys || []
+          this.totalInfo = res.data.totalInfo || null
         } else {
           this.errorMsg = res.data.message
         }
@@ -797,6 +869,8 @@ export default {
     async confirmBConfig() {
       this.headersA = await this.getHeaders(this.bFile, this.sheetA, this.headerA)
       this.headersB = await this.getHeaders(this.bFile, this.sheetB, this.headerB)
+      this.keyA = this.autoPickKey(this.headersA)
+      this.keyB = this.autoPickKey(this.headersB)
       this.modeBStep = 1
     },
 
@@ -804,6 +878,8 @@ export default {
       this.modeBStep = 0
       this.headersA = []
       this.headersB = []
+      this.keyA = ''
+      this.keyB = ''
       this.selectedAField = ''
       this.selectedBField = ''
       this.fieldMappingsB = []
@@ -847,12 +923,16 @@ export default {
         formData.append('sheetB', this.sheetB)
         formData.append('headerA', this.headerA)
         formData.append('headerB', this.headerB)
+        formData.append('keyA', this.keyA)
+        formData.append('keyB', this.keyB)
         formData.append('fieldMapping', JSON.stringify(this.fieldMappingsB))
         const res = await axios.post('/api/hr/gzb-pipei/mode-b', formData)
         if (res.data.success) {
           this.downloadUrl = `/api/hr/download/${res.data.fileName}`
           this.compareRows = res.data.compareRows
           this.diffCount = res.data.diffCount
+          this.unmatchedKeys = res.data.unmatchedKeys || []
+          this.totalInfo = res.data.totalInfo || null
         } else {
           this.errorMsg = res.data.message
         }

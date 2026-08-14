@@ -25,16 +25,20 @@ import CwgjxDgfCf from '../components/finance/cwgjx/CwgjxDgfCf.vue'
 import HsHuizongCxm from '../components/finance/cxm/HsHuizongCxm.vue'
 import HsHuizongCxmChecker from '../components/finance/cxm/HsHuizongCxmChecker.vue'
 
+// ===== Finance - hbgs =====
+import Hbgs from '../components/finance/Hbgs.vue'
+
 // ===== Finance - jxkh =====
 import JxkhSjpp from '../components/finance/jxkh/JxkhSjpp.vue'
 import JxkhWgl from '../components/finance/jxkh/JxkhWgl.vue'
 import JxkhHbbg from '../components/finance/jxkh/JxkhHbbg.vue'
+import JxkhTenure from '../components/finance/jxkh/JxkhTenure.vue'
 
 // ===== HR =====
 import CfDuogeWenjZz from '../components/hr/CfDuogeWenjZz.vue'
 import CfZdnrfyqNrcsWsx from '../components/hr/CfZdnrfyqNrcsWsx.vue'
-import CfGzbcfHyp from '../components/hr/CfGzbcfHyp.vue'
-import CfGzbcfHypSimple from '../components/hr/CfGzbcfHypSimple.vue'
+import HrGzbcfSplit from '../components/hr/hyp/HrGzbcfSplit.vue'
+import HrWordMerge from '../components/hr/hyp/HrWordMerge.vue'
 import HrGzbPipei from '../components/hr/HrGzbPipei.vue'
 
 const routes = [
@@ -62,15 +66,18 @@ const routes = [
   { path: '/finance/jxkh/sjpp', name: 'finance-jxkh-sjpp', component: JxkhSjpp },
   { path: '/finance/jxkh/wgl', name: 'finance-jxkh-wgl', component: JxkhWgl },
   { path: '/finance/jxkh/hbbg', name: 'finance-jxkh-hbbg', component: JxkhHbbg },
+  { path: '/finance/jxkh/tenure', name: 'finance-jxkh-tenure', component: JxkhTenure },
   // 核算汇总
   { path: '/finance/cxm/summary', name: 'finance-cxm-summary', component: HsHuizongCxm },
   { path: '/finance/cxm/checker', name: 'finance-cxm-checker', component: HsHuizongCxmChecker },
+  // 合并个税
+  { path: '/finance/hbgs', name: 'finance-hbgs', component: Hbgs },
 
   // ===== 人事功能 =====
   { path: '/hr/split-files', name: 'hr-split-files', component: CfDuogeWenjZz },
   { path: '/hr/split-config', name: 'hr-split-config', component: CfZdnrfyqNrcsWsx },
-  { path: '/hr/split-salary', name: 'hr-split-salary', component: CfGzbcfHyp },
-  { path: '/hr/split-salary-simple', name: 'hr-split-salary-simple', component: CfGzbcfHypSimple },
+  { path: '/hr/gzbcf-split', name: 'hr-gzbcf-split', component: HrGzbcfSplit },
+  { path: '/hr/word-merge', name: 'hr-word-merge', component: HrWordMerge },
   { path: '/hr/gzb-pipei', name: 'hr-gzb-pipei', component: HrGzbPipei },
 ]
 

@@ -480,9 +480,10 @@ export default {
 }
 
 .section {
+  position: relative;
   padding: 20px 0;
   border-bottom: 1px dashed #e4e7ed;
-  transition: background 0.3s;
+  transition: background 0.3s, box-shadow 0.3s;
 }
 
 .section:last-child {
@@ -491,8 +492,9 @@ export default {
 
 .section:hover {
   background: #fafbfc;
-  margin: 0 -24px;
-  padding: 20px 24px;
+  /* 用 box-shadow 模拟背景外扩到父容器 padding 区域，
+     避免 margin 0 -24px 造成横向溢出导致底部出现横向滚动条 */
+  box-shadow: 0 0 0 24px #fafbfc;
   border-radius: 8px;
 }
 
@@ -727,8 +729,8 @@ export default {
   }
 
   .section:hover {
-    margin: 0 -16px;
-    padding: 16px;
+    /* 移动端 16px 同样用 box-shadow 模拟，避免横向溢出 */
+    box-shadow: 0 0 0 16px #fafbfc;
   }
 }
 </style>

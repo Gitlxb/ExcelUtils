@@ -1,6 +1,7 @@
-package com.example.project.controller.hr;
+package com.example.project.controller.hr.hyp;
 
-import com.example.project.service.hr.CfGzbcfHypSimpleService;
+import com.example.project.service.hr.hyp.CfGzbcfHypSimpleService;
+import com.example.project.controller.hr.HrBaseController;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;

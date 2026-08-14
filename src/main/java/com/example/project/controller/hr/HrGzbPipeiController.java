@@ -89,19 +89,19 @@ public class HrGzbPipeiController extends HrBaseController {
             @RequestParam("neiSheet") String neiSheet,
             @RequestParam("jiaHeaderRow") int jiaHeaderRow,
             @RequestParam("neiHeaderRow") int neiHeaderRow,
+            @RequestParam("jiaKey") String jiaKey,
+            @RequestParam("neiKey") String neiKey,
             @RequestParam("fieldMapping") String fieldMapping) {
         Map<String, Object> result = new HashMap<>();
         try {
+            if (jiaKey == null || jiaKey.trim().isEmpty()) throw new IllegalArgumentException("请选择甲方关键列");
+            if (neiKey == null || neiKey.trim().isEmpty()) throw new IllegalArgumentException("请选择内部关键列");
             File dir = new File(uploadDir);
             if (!dir.exists()) dir.mkdirs();
             HrGzbPipeiService.ProcessResult pr = hrGzbPipeiService.processModeA(
                     jiaFile, neiFile, jiaSheet, neiSheet,
-                    jiaHeaderRow, neiHeaderRow, fieldMapping, uploadDir);
-            result.put("success", true);
-            result.put("message", "工资表匹配完成");
-            result.put("fileName", new File(pr.outputPath).getName());
-            result.put("compareRows", pr.compareRows);
-            result.put("diffCount", pr.diffCount);
+                    jiaHeaderRow, neiHeaderRow, jiaKey.trim(), neiKey.trim(), fieldMapping, uploadDir);
+            putResult(result, pr);
         } catch (Exception e) {
             result.put("success", false);
             result.put("message", "处理失败：" + e.getMessage());
@@ -120,22 +120,32 @@ public class HrGzbPipeiController extends HrBaseController {
             @RequestParam("sheetB") String sheetB,
             @RequestParam("headerA") int headerA,
             @RequestParam("headerB") int headerB,
+            @RequestParam("keyA") String keyA,
+            @RequestParam("keyB") String keyB,
             @RequestParam("fieldMapping") String fieldMapping) {
         Map<String, Object> result = new HashMap<>();
         try {
+            if (keyA == null || keyA.trim().isEmpty()) throw new IllegalArgumentException("请选择工作簿A关键列");
+            if (keyB == null || keyB.trim().isEmpty()) throw new IllegalArgumentException("请选择工作簿B关键列");
             File dir = new File(uploadDir);
             if (!dir.exists()) dir.mkdirs();
             HrGzbPipeiService.ProcessResult pr = hrGzbPipeiService.processModeB(
-                    file, sheetA, sheetB, headerA, headerB, fieldMapping, uploadDir);
-            result.put("success", true);
-            result.put("message", "工资表匹配完成");
-            result.put("fileName", new File(pr.outputPath).getName());
-            result.put("compareRows", pr.compareRows);
-            result.put("diffCount", pr.diffCount);
+                    file, sheetA, sheetB, headerA, headerB, keyA.trim(), keyB.trim(), fieldMapping, uploadDir);
+            putResult(result, pr);
         } catch (Exception e) {
             result.put("success", false);
             result.put("message", "处理失败：" + e.getMessage());
         }
         return result;
+    }
+
+    private void putResult(Map<String, Object> result, HrGzbPipeiService.ProcessResult pr) {
+        result.put("success", true);
+        result.put("message", "工资表匹配完成");
+        result.put("fileName", new File(pr.outputPath).getName());
+        result.put("compareRows", pr.matchedCount);
+        result.put("diffCount", pr.diffCount);
+        result.put("unmatchedKeys", pr.unmatchedKeys);
+        result.put("totalInfo", pr.totalInfo);
     }
 }

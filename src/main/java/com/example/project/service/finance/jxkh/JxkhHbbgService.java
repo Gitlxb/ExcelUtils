@@ -1000,4 +1000,23 @@ public class JxkhHbbgService {
             }
         }
     }
+
+    // ===================== 自定义合并（多表合并：删列+公司命名） =====================
+
+    /**
+     * 多表合并（删列+公司命名），纯数据输出。
+     * 委托 {@link JxkhHbbgCustomMergeEngine#run} 执行删列 + 公司命名 + 纵向堆叠流程。
+     */
+    public String customMerge(
+            List<MultipartFile> files,
+            List<JxkhHbbgCustomMergeEngine.SheetSelection> selections,
+            String deleteColLetter,
+            String sheetNameColLetter,
+            int headerRows,
+            String outputDir
+    ) throws Exception {
+        return JxkhHbbgCustomMergeEngine.run(
+            files, selections, deleteColLetter, sheetNameColLetter, headerRows, outputDir, null
+        );
+    }
 }

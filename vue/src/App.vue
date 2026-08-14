@@ -36,7 +36,7 @@
           <el-menu-item index="/finance/yzpz">预支平账</el-menu-item>
           <el-sub-menu index="finance-toolbox">
             <template #title><span>财务工具箱</span></template>
-            <el-menu-item index="/finance/toolbox/fee-split">手续费拆分</el-menu-item>
+            <el-menu-item index="/finance/toolbox/fee-split">预支处理</el-menu-item>
             <el-menu-item index="/finance/toolbox/data-compare">数据比较</el-menu-item>
             <el-menu-item index="/finance/toolbox/expense-split">报销拆分</el-menu-item>
             <el-menu-item index="/finance/toolbox/labor-split">代工费拆分_批量处理</el-menu-item>
@@ -46,12 +46,14 @@
             <el-menu-item index="/finance/jxkh/sjpp">数据匹配</el-menu-item>
             <el-menu-item index="/finance/jxkh/wgl">稳岗率分析</el-menu-item>
             <el-menu-item index="/finance/jxkh/hbbg">合并表格</el-menu-item>
+            <el-menu-item index="/finance/jxkh/tenure">在职月份计算</el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="finance-cxm">
             <template #title><span>核算汇总</span></template>
             <el-menu-item index="/finance/cxm/summary">拆分汇总比较</el-menu-item>
             <el-menu-item index="/finance/cxm/checker">核对</el-menu-item>
           </el-sub-menu>
+          <el-menu-item index="/finance/hbgs">合并个税</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="hr">
@@ -60,10 +62,10 @@
           </template>
           <el-menu-item index="/hr/split-files">拆分两次_在职离职</el-menu-item>
           <el-menu-item index="/hr/split-config">按拆分参数配置拆分</el-menu-item>
-          <el-sub-menu index="hr-split-salary">
-            <template #title><span>工资表拆分</span></template>
-            <el-menu-item index="/hr/split-salary">增强版</el-menu-item>
-            <el-menu-item index="/hr/split-salary-simple">简化版</el-menu-item>
+          <el-sub-menu index="hr-doc-toolbox">
+            <template #title><span>文档处理工具箱</span></template>
+            <el-menu-item index="/hr/gzbcf-split">工资表拆分</el-menu-item>
+            <el-menu-item index="/hr/word-merge">Word文档合并</el-menu-item>
           </el-sub-menu>
           <el-menu-item index="/hr/gzb-pipei">工资表匹配</el-menu-item>
         </el-sub-menu>

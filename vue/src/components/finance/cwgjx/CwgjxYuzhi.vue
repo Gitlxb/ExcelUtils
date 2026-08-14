@@ -2,8 +2,8 @@
   <el-card class="func-card">
     <div class="page-container">
     <div class="func-page-header">
-      <h2 class="func-page-title">手续费拆分</h2>
-      <p class="func-page-desc">上传手续费 Excel 文件，自动处理并下载结果。</p>
+      <h2 class="func-page-title">预支处理</h2>
+      <p class="func-page-desc">上传工人预支申请 Excel 文件，自动处理并下载结果。</p>
     </div>
 
     <div class="tb-section-title">上传文件</div>
@@ -98,7 +98,7 @@ export default {
     },
     refreshFee() {
       this.loading = false
-      this.showMessage('手续费拆分已刷新', 'success')
+      this.showMessage('预支处理已刷新', 'success')
     }
   }
 }

@@ -1,4 +1,4 @@
-package com.example.project.service.hr;
+package com.example.project.service.hr.hyp;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -22,6 +22,26 @@ public class CfGzbcfHypSimpleService {
 
     private static final Set<String> FOOTER_KEYWORDS = Set.of("合计", "总计", "汇总", "小计", "平均");
     private static final List<String> SHEETS_TO_REMOVE = List.of("各公司支出", "未发工资的社保扣除人员");
+
+    /**
+     * 个税公式依赖字段 -> 候选表头关键字（按优先级匹配，越靠前越具体）。
+     * 对齐 Python：cf_gzbcf_hyp_simple.py 中的 TAX_FORMULA_FIELD_HEADERS。
+     * 公式结构：=-ROUND(MAX((税基 - 5000 - 专项附加扣除 - 通讯费 + 社保个人扣款 + 公积金扣款-个人)
+     *                     * {3,10,20,25,30,35,45}% - 5*{0,42,282,532,882,1432,3032}, 0), 2)
+     */
+    private static final Map<String, List<String>> TAX_FORMULA_FIELD_HEADERS = new LinkedHashMap<>();
+    static {
+        TAX_FORMULA_FIELD_HEADERS.put("taxable_base",
+                List.of("税前工资", "应发工资", "应纳税所得额", "应发", "工资基数"));
+        TAX_FORMULA_FIELD_HEADERS.put("subtract_deduction",
+                List.of("专项附加扣除", "专项附加"));
+        TAX_FORMULA_FIELD_HEADERS.put("subtract_allowance",
+                List.of("通讯费", "通讯补贴", "电话费"));
+        TAX_FORMULA_FIELD_HEADERS.put("add_social",
+                List.of("社保个人扣款", "社保个人"));
+        TAX_FORMULA_FIELD_HEADERS.put("add_fund",
+                List.of("公积金扣款-个人", "公积金扣款", "公积金个人扣款", "公积金个人"));
+    }
 
     // ========================================================================
     //  公开 API（与增强版相同）
@@ -336,7 +356,7 @@ public class CfGzbcfHypSimpleService {
                 }
             }
 
-            // 7. 填充个税公式
+            // 7. 填充个税公式（按表头名动态定位依赖列，避免换模板后列布局变化导致错位）
             Map<String, List<Integer>> colNameMap = new LinkedHashMap<>();
             Row newHeader = newSheet.getRow(1);
             if (newHeader != null) {
@@ -348,15 +368,30 @@ public class CfGzbcfHypSimpleService {
             List<Integer> taxCols = colNameMap.get("个税");
             if (taxCols != null && !taxCols.isEmpty()) {
                 int taxCol = taxCols.get(0);
-                for (int r = 2; r <= newDataLastRow; r++) {
-                    Row row = newSheet.getRow(r);
-                    Cell cell = row.getCell(taxCol);
-                    if (cell == null) cell = row.createCell(taxCol);
-                    int er = r + 1;
-                    cell.setCellFormula(
-                        "-ROUND(MAX((AK" + er + "-5000-AJ" + er + "-AT" + er
-                        + "+AM" + er + "+AN" + er
-                        + ")*{3,10,20,25,30,35,45}%-5*{0,42,282,532,882,1432,3032},),2)");
+                Map<String, Integer> taxFieldCols = resolveTaxFormulaColumns(colNameMap);
+                List<String> missing = new ArrayList<>();
+                for (Map.Entry<String, Integer> e : taxFieldCols.entrySet()) {
+                    if (e.getValue() == null) missing.add(e.getKey());
+                }
+                if (missing.isEmpty()) {
+                    String tb = getColumnLetter(taxFieldCols.get("taxable_base"));       // 税前工资（税基）
+                    String sd = getColumnLetter(taxFieldCols.get("subtract_deduction"));  // 专项附加扣除
+                    String ea = getColumnLetter(taxFieldCols.get("subtract_allowance"));  // 通讯费
+                    String sp = getColumnLetter(taxFieldCols.get("add_social"));          // 社保个人扣款
+                    String fp = getColumnLetter(taxFieldCols.get("add_fund"));            // 公积金扣款-个人
+                    for (int r = 2; r <= newDataLastRow; r++) {
+                        Row row = newSheet.getRow(r);
+                        Cell cell = row.getCell(taxCol);
+                        if (cell == null) cell = row.createCell(taxCol);
+                        int er = r + 1;
+                        cell.setCellFormula(
+                            "-ROUND(MAX((" + tb + er + "-5000-" + sd + er + "-" + ea + er
+                            + "+" + sp + er + "+" + fp + er
+                            + ")*{3,10,20,25,30,35,45}%-5*{0,42,282,532,882,1432,3032},),2)");
+                    }
+                    System.out.println("[INFO] 简化版个税公式动态填充完成：税前工资[" + tb + "] 专项附加扣除[" + sd + "] 通讯费[" + ea + "] 社保个人扣款[" + sp + "] 公积金扣款-个人[" + fp + "]");
+                } else {
+                    System.out.println("[WARN] 个税依赖列未全部定位（缺失 " + missing + "），保留原表'个税'列数值，未覆盖写入公式。");
                 }
             }
 
@@ -482,24 +517,38 @@ public class CfGzbcfHypSimpleService {
         return -1;
     }
 
+    /**
+     * 检测表尾起始行（基于拆分列的关键字扫描）。
+     * 对齐 Python：cf_gzbcf_hyp_simple.py._detect_footer。
+     * 策略：从第 3 行开始遍历到 maxRow，对拆分列（含合并单元格）取值，
+     *       跳过表尾关键字（合计/总计/汇总/小计/平均），最后一个有效数据行 + 1 即为表尾起始。
+     */
     private int detectFooterStart(Sheet sheet, int splitColIdx) {
         int maxRow = sheet.getLastRowNum();
-        // 从后往前找，找到包含 SUM 公式的行即为表尾开始
-        for (int r = maxRow; r >= 2; r--) {
+        Map<String, String> mergeValues = buildMergeValueMap(sheet);
+        int lastDataRow = 2;  // 0-based，第 2 行是表头
+        for (int r = 2; r <= maxRow; r++) {
             Row row = sheet.getRow(r);
-            if (row == null) continue;
-            for (int c = 0; c < row.getLastCellNum(); c++) {
-                Cell cell = row.getCell(c);
-                if (cell != null && cell.getCellType() == CellType.FORMULA) {
-                    String formula = cell.getCellFormula();
-                    // 检测到 SUM 公式视为表尾行
-                    if (formula != null && formula.toUpperCase().startsWith("SUM(")) {
-                        return r;
-                    }
+            String val;
+            String mergeKey = r + "_" + splitColIdx;
+            if (mergeValues.containsKey(mergeKey)) {
+                val = mergeValues.get(mergeKey);
+            } else if (row != null) {
+                val = getCellStringValue(row.getCell(splitColIdx)).trim();
+            } else {
+                continue;
+            }
+            if (!val.isEmpty()) {
+                boolean isFooter = false;
+                for (String kw : FOOTER_KEYWORDS) {
+                    if (val.contains(kw)) { isFooter = true; break; }
+                }
+                if (!isFooter) {
+                    lastDataRow = r;
                 }
             }
         }
-        return maxRow + 1;
+        return lastDataRow + 1;
     }
 
     private void copyCellValue(Cell src, Cell dst) {
@@ -537,5 +586,73 @@ public class CfGzbcfHypSimpleService {
                 try { return cell.getStringCellValue(); } catch (Exception e) { return cell.getCellFormula(); }
             default: return "";
         }
+    }
+
+    /**
+     * 将 0-based 列索引转为 Excel 列字母（A、B、…、AA、AB…）。
+     * 对齐 Python：openpyxl.utils.get_column_letter。
+     */
+    private String getColumnLetter(int colIndex) {
+        if (colIndex < 0) return "A";
+        StringBuilder sb = new StringBuilder();
+        int num = colIndex + 1;
+        while (num > 0) {
+            int rem = (num - 1) % 26;
+            sb.insert(0, (char) ('A' + rem));
+            num = (num - 1) / 26;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 在 表头名 -> 列号列表 映射中按候选关键字定位列号。
+     * 对齐 Python：cf_gzbcf_hyp_simple.py._match_tax_header。
+     * 匹配策略：先精确匹配（表头名完全等于候选），再包含匹配（候选为表头子串）。
+     * 包含匹配时优先选择「候选词更长、命中表头更短」的组合，以降低误匹配。
+     *
+     * @param headerToCol  表头名 -> 列号列表（同名可能多列）
+     * @param candidates   候选关键字列表（按优先级）
+     * @return             命中列号（取列表第一个）；未命中返回 null
+     */
+    private Integer matchTaxHeader(Map<String, List<Integer>> headerToCol, List<String> candidates) {
+        // 1) 精确匹配
+        for (String cand : candidates) {
+            List<Integer> cols = headerToCol.get(cand);
+            if (cols != null && !cols.isEmpty()) return cols.get(0);
+        }
+        // 2) 包含匹配：以 (候选长度, -表头长度) 为优先级，越大越优先
+        int bestScore = Integer.MIN_VALUE;
+        Integer bestCol = null;
+        for (Map.Entry<String, List<Integer>> entry : headerToCol.entrySet()) {
+            String header = entry.getKey();
+            List<Integer> cols = entry.getValue();
+            if (cols == null || cols.isEmpty()) continue;
+            for (String cand : candidates) {
+                if (cand != null && !cand.isEmpty() && header.contains(cand)) {
+                    // score 越大越优先：候选长度越大越好、表头长度越小越好
+                    int score = cand.length() * 1000 - header.length();
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestCol = cols.get(0);
+                    }
+                    break;  // 一个表头只取最佳候选
+                }
+            }
+        }
+        return bestCol;
+    }
+
+    /**
+     * 根据 表头名 -> 列号 映射，定位个税公式各语义字段的实际列号。
+     * 对齐 Python：cf_gzbcf_hyp_simple.py._resolve_tax_formula_columns。
+     *
+     * @return 字段名 -> 列号(int) 或 null(未找到)
+     */
+    private Map<String, Integer> resolveTaxFormulaColumns(Map<String, List<Integer>> headerToCol) {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : TAX_FORMULA_FIELD_HEADERS.entrySet()) {
+            result.put(entry.getKey(), matchTaxHeader(headerToCol, entry.getValue()));
+        }
+        return result;
     }
 }

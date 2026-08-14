@@ -1,0 +1,142 @@
+/* HbgsCard 样式 - 合并个税工具 */
+/* 对应 Python hbgs_gui.py 的 GUI 布局 */
+
+/* ========== 页面标题区域 ========== */
+.hbgs-page-header {
+  padding: 8px 0;
+}
+.hbgs-page-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #303133;
+  margin: 0 0 8px 0;
+}
+.hbgs-page-desc {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ========== 上传区域 ========== */
+.hbgs-upload {
+  width: 100%;
+  min-height: 100px;
+}
+.hbgs-upload .el-upload-dragger {
+  width: 100%;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.hbgs-upload-icon {
+  font-size: 36px;
+  color: #409EFF;
+  margin-bottom: 8px;
+}
+.hbgs-upload-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 6px;
+}
+.hbgs-file-name {
+  font-size: 12px;
+  color: #409EFF;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+/* ========== 文件夹上传区域（模拟 el-upload drag 样式） ========== */
+.hbgs-folder-upload-area {
+  width: 100%;
+  min-height: 100px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.3s, background-color 0.3s;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.hbgs-folder-upload-area:hover {
+  border-color: #409EFF;
+  background: #ecf5ff;
+}
+
+/* ========== 预检信息 ========== */
+.hbgs-preview-info {
+  margin-top: 10px;
+}
+
+/* ========== 错误提示 ========== */
+.hbgs-error {
+  color: #f56c6c;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* ========== 下载区域 ========== */
+.hbgs-download-area {
+  margin-top: 12px;
+}
+
+/* ========== 统计信息 ========== */
+.hbgs-stats {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+/* ========== 警告提示 ========== */
+.hbgs-warnings {
+  margin-top: 8px;
+}
+
+/* ========== 进度条 ========== */
+.hbgs-progress {
+  margin-top: 16px;
+}
+.hbgs-progress-text {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+/* ========== 日志区域 ========== */
+.hbgs-logs {
+  margin-top: 16px;
+}
+.hbgs-logs h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 8px 0;
+}
+.hbgs-log-box {
+  max-height: 300px;
+  overflow-y: auto;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.hbgs-log-line {
+  padding: 1px 0;
+}
+
+/* ========== 错误区域 ========== */
+.hbgs-error-area {
+  margin-top: 16px;
+}
