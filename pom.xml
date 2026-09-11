@@ -70,6 +70,32 @@
 
     <build>
         <plugins>
+            <!-- ========== Step 0: 打包前自动清理 static 中的前端产物 ==========
+                 背景：Step 3 的 copy-resources 只覆盖同名文件、不会删除旧文件；
+                 webpack 每次构建产出带新 hash 的文件名（app.<hash>.js），历史产物会无限叠加
+                 （曾累积 48 套 app.js + 53 张旧大图 ≈ 90MB 全部打进 jar，jar 从 48MB 涨到 138MB）。
+                 此步骤在拷贝之前清空产物目录，保证每次打包 static 只保留最新一套。
+                 ⚠️ 本 plugin 必须声明在 maven-resources-plugin 之前（同一 phase 内按声明顺序执行）。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>clean-static-frontend-artifacts</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <delete dir="${project.basedir}/src/main/resources/static/js"/>
+                                <delete dir="${project.basedir}/src/main/resources/static/css"/>
+                                <delete dir="${project.basedir}/src/main/resources/static/img"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- ========== 前端自动构建：npm run build 然后拷贝到 static ========== -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
