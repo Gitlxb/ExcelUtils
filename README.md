@@ -1,68 +1,221 @@
-# 手续费拆分工具 - Spring Boot + Vue 项目
+# ExcelUtils · Excel 自动处理工具箱
 
-## 项目结构
+面向财务 / 人事日常批量表格处理的 Web 工具集。后端 Spring Boot 负责 Excel 解析与业务规则，前端 Vue 3 提供操作界面，所有处理以**异步任务**执行，结果文件可下载。
 
-```
-Project/
-├── src/main/java/          # Spring Boot后端
-├── src/main/resources/     # 配置文件
-├── vue/                    # Vue前端
-│   ├── public/
-│   └── src/
-└── uploads/                # 文件上传目录
-```
+> 本项目由早期一批 Python 桌面脚本（tkinter）与 VBA 宏迁移而来，同一套业务规则在三端（VBA / Python / Java）保持一致。
 
-## 启动步骤
+---
 
-### 1. 启动后端（Spring Boot）
+## 功能模块
 
-```bash
-cd D:\Project
-mvn spring-boot:run
-```
+### 通用功能
 
-后端将运行在：http://localhost:8080
+| 菜单 | 作用 |
+|---|---|
+| 拆成多个工作表 | 按指定列把一个工作表拆成同簿多个工作表 |
+| 拆成多个 Excel 文件 | 按分组拆成多个独立文件，保留表头/表尾/合并单元格 |
+| 文件夹文件提取 | 递归遍历文件夹，按规则提取文件或内容汇总 |
+| 表格格式转换 | 统一表头、列序、日期与数字格式 |
+| PDF 转 Excel | 提取 PDF 表格输出为工作簿 |
 
-### 2. 启动前端（Vue）
+### 财务功能
 
-```bash
-cd D:\Project\vue
-npm install
-npm run serve
-```
+| 菜单 | 作用 |
+|---|---|
+| 开关账筛选 | 按开关账条件筛选流水 |
+| 供应商合并 | 多供应商表合并，保留原表样式 |
+| 批量批注工具 | 按名单批量给单元格加批注 |
+| 银行流水修改 | 流水表批量改写与规整 |
+| 预支平账 | 「工人预支申请」与「预支人员信息查询明细表」两表匹配平账 |
+| 财务工具箱 · 预支处理 | 手续费拆分：按运营项目 + 银行类型计算手续费 |
+| 财务工具箱 · 数据比较 | 两表对比去重 |
+| 财务工具箱 · 报销拆分 | 报销明细按规则拆分 |
+| 财务工具箱 · 代工费拆分 | 代工费批量拆分处理 |
+| 绩效考核 · 数据匹配 | 考核名单与工资表匹配 |
+| 绩效考核 · 稳岗率分析 | 按区间分段计算稳岗率与费率（项目经理基础费率 0.87） |
+| 绩效考核 · 合并表格 | 多表合并 |
+| 绩效考核 · 在职月份计算 | 按入离职日期计算在职月份 |
+| 核算汇总 · 拆分汇总比较 / 核对 | 拆分结果汇总与交叉核对 |
+| **合并个税** | 见下方专项说明 |
 
-前端将运行在：http://localhost:8081
+### 人事功能
 
-## 使用说明
+| 菜单 | 作用 |
+|---|---|
+| 拆分两次_在职离职 | 工资表按在职 / 离职两次拆分 |
+| 按拆分参数配置拆分 | 自定义拆分参数 |
+| 文档处理工具箱 · 工资表拆分 | 工资表分类拆分 |
+| 文档处理工具箱 · 孝心金拆分 | 孝心金明细拆分 |
+| 文档处理工具箱 · Word 文档合并 | 多 Word 文档合并 + 分类提取（Apache POI） |
+| 工资表匹配 | 人员名单与工资表匹配 |
 
-1. 访问 http://localhost:8081
-2. 拖拽或点击上传 .xlsx 文件
-3. 等待处理完成
-4. 下载处理后的文件
+另有全局「AI 助手」与右下角「任务中心」（查看进度、下载结果、失败原因）。
 
-## API接口
-
-- **POST** `/api/shouxufei/upload` - 上传并处理Excel文件
-- **GET** `/api/shouxufei/download/{fileName}` - 下载处理后的文件
-
-## 功能特性
-
-✅ 自动识别并应用6种条件规则  
-✅ 计算手续费（E列）和实际金额（F列）  
-✅ 按G列内容拆分成多个工作表  
-✅ 自动添加合计行  
-✅ 特殊条件行标黄标记  
-✅ J、K列重复值标记  
-✅ 账号信息汇总  
+---
 
 ## 技术栈
 
-**后端：**
-- Spring Boot 3.5.14
-- Apache POI 5.2.5
-- Java 17
+| 层 | 技术 |
+|---|---|
+| 后端 | Java 17 · Spring Boot 3.5.14 · Apache POI 5.2.5 · Maven |
+| 前端 | Vue 3 · Vue Router 4 · Element Plus 2.x · axios · @vue/cli-service 5 |
+| 运行 | 内嵌 Tomcat；生产以 jar + Docker 运行 |
 
-**前端：**
-- Vue 3
-- Element Plus
-- Axios
+---
+
+## 目录结构
+
+```
+Project/
+├── pom.xml
+├── src/main/java/com/example/project/
+│   ├── controller/          # 接口层（general / finance / hr / task）
+│   ├── service/             # 业务逻辑（Excel 处理核心都在这层）
+│   ├── task/                # 异步任务框架（TaskService / 任务中心）
+│   └── config/              # CORS、SPA 路由转发
+├── src/main/resources/
+│   ├── application.properties
+│   ├── logback-spring.xml
+│   └── static/              # 前端构建产物（不入版本库，仅保留 favicon.ico）
+├── vue/                     # 前端源码
+└── uploads/                 # 运行时上传/输出目录（不入版本库）
+```
+
+---
+
+## 本地开发
+
+### 1. 后端
+
+```bash
+mvn spring-boot:run
+# → http://localhost:8080
+```
+
+### 2. 前端
+
+```bash
+cd vue
+npm install
+npm run serve
+# → http://localhost:8081 ，/api 由 devServer 代理到 8080
+```
+
+> 开发期前端走 dev server，读取的是 `vue/src` 源码；**页面改动无需构建即可生效**。但这会造成「本地看着已更新、部署后没变化」的错觉，见下节。
+
+---
+
+## 打包与部署
+
+### 打包（顺序不能颠倒）
+
+```bash
+# ① 先构建前端，产物落到 src/main/resources/static
+cd vue && npm run build && cd ..
+
+# ② 再打 jar（会把上一步的静态资源一并打进 BOOT-INF/classes/static）
+mvn clean package -DskipTests
+# → target/Project-0.0.1-SNAPSHOT.jar
+```
+
+> **必须 ①→②**：`mvn package` 只负责把 `src/main/resources/static` 里**已存在**的文件打进 jar。
+> 跳过 `npm run build` 就会打出旧界面。构建后可用下面的方法确认版本：
+>
+> ```bash
+> unzip -p target/Project-0.0.1-SNAPSHOT.jar \
+>   BOOT-INF/classes/static/index.html | grep -o 'app\.[a-z0-9]*\.js'
+> ```
+> 每次构建哈希都会变化，与上一次不同才算新包。
+
+### 部署
+
+服务器以「jar 挂载进容器」的方式运行（`docker-compose.yml` 含服务器路径与内网名，**不入版本库**，只在服务器维护）：
+
+```bash
+# 上传 jar 后
+cd /opt/excel-processor
+md5sum Project-0.0.1-SNAPSHOT.jar        # 与本地比对，确认已覆盖
+docker compose up -d --force-recreate excel
+docker inspect excel_app --format '{{.State.StartedAt}}'   # 确认已重启
+```
+
+---
+
+## 关键配置（`application.properties`）
+
+| 配置 | 默认/当前值 | 说明 |
+|---|---|---|
+| `server.port` | `${SERVER_PORT:8080}` | 容器内为 9090，仅内网可达 |
+| `file.upload-dir` | `${user.dir}/uploads` | 输出文件目录，下载接口也读这里 |
+| `spring.servlet.multipart.max-file-size` | 200MB | 单个上传文件上限 |
+| `spring.servlet.multipart.max-request-size` | 300MB | 单次请求总量上限 |
+| `spring.servlet.multipart.file-size-threshold` | 300MB | 需 ≥ max-file-size，否则大文件落盘到系统临时目录 |
+| **`server.tomcat.max-part-count`** | **2000** | 单次请求的**分片数量**上限，Tomcat 默认仅 50 |
+| `deepseek.api.key` | `${DEEPSEEK_API_KEY:}` | AI 助手的密钥，走环境变量注入 |
+
+> `max-part-count` 与字节上限是两条独立的限制。「合并个税」按目录整批上传（实测 49~51 个文件 + 1 份规则表），只调体积上限无效，必须同时放开分片数。
+
+---
+
+## 合并个税（专项说明）
+
+递归扫描所选目录（含子目录）下所有 Excel，合并各簿的「个税统计」表，并按规则表计算银行手续费。
+
+### 使用前提
+
+1. **所选目录内必须包含 `收取手续费银行信息.xlsx`**（文件名严格一致）。程序从上传文件中按文件名识别规则表；找不到会直接失败并提示，不会产出「手续费整列留空」的结果。
+2. 每个源簿需含工作表：
+   - `个税统计`（数据表，必须有「姓名」「身份证」列）
+   - `员工信息-X月`（用于按姓名查「运营项目」「开户行」，参与手续费计算；缺失则手续费留空）
+3. 规则表需含列：`客户状态`、`运营项目`、`扣费银行（多填）`、`扣费金额`（前两列为必需）。`客户状态 = 终止合作` 的行会被跳过。
+
+### 输出列布局
+
+固定 **19 列白名单**（文件名 / 项目 / 姓名 / 身份证 / 入职时间 / 离职时间 / 应发工资 / 个税 / 预支扣款 / 需扣回 / 实发工资 / 备注 / 发薪单位 / 联系电话 / 社保 / 公积金 / 手续费 / 个税申报所属期 / 「采用/不采用」），并在此基础上：
+
+- 源簿缺列 → 该列留空，不影响其他文件；
+- 白名单外的列 → 按「左右邻」插入输出表；
+- 忽略名单（`开户行` / `发放公司` / `电话号码`）→ 整列跳过，仅在日志汇总提示（`开户行`、`发放公司` 不输出，但手续费引擎仍会用它们判断）；
+- 别名归并：`个税扣款→个税`、`入职日期→入职时间`、`离职日期→离职时间`、`发薪公司→发薪单位`、`手机号→联系电话`、`预支/预支扣回→预支扣款`、`个税申报所属期*` 前缀归一；
+- 源表自带同名生成列时改名为 `xxx(源)` 另立一列；
+- **列尾压缩**：删除尾部整列为空的列，使「采用/不采用」紧跟最后一个有效列（中间空列保留，保证跨月列序稳定）。
+
+### 手续费规则
+
+规则文本按**精确匹配**归类为 A~N 共 14 类，再结合员工开户行判断是否免扣：
+
+| 类别 | 含义 | 免扣银行 |
+|---|---|---|
+| A | 全免 | 全部 |
+| B / C | 招商 / 招商+建设 | 招商；招商、建设 |
+| D / E / F / G | 平安 / 宁波 / 工商 / 温州 | 对应银行 |
+| H / I | 邮政（扣 5 / 扣 3） | 邮政、邮储 |
+| J / K / L | 招商+邮政 / 邮政+中信 / 中信 | 见名列 |
+| M | 双单位：签浙江锦途→招商、建设不扣；签温州驰锦→民生不扣 | 按「发薪单位」分支 |
+| N | 全扣 | 无 |
+
+金额优先级：规则表「扣费金额」为正数时覆盖默认值；否则 A=0、I=3、其余=5。
+
+---
+
+## 常见问题
+
+**1. 部署后页面还是旧版**
+先确认 jar 里带的是新前端（见「打包」节的 `unzip -p ... index.html`）。若 jar 正确，再检查：`md5sum` 是否与本地一致 → 容器是否真的重启 → 浏览器 `Ctrl+Shift+R`（DevTools → Network 看实际加载的 `app.*.js` 哈希）。
+
+**2. 上传报「Maximum upload size exceeded」**
+该异常名有误导性：Spring 会把 Tomcat 分片数超限（`max-part-count`，默认 50）也包装成这个异常。文件总量不大仍报此错时，检查 `server.tomcat.max-part-count` 并确认后端已重启。
+
+**3. 合并个税提示「所选择的目录需要包含「收取手续费银行信息.xlsx」」**
+规则表没有随目录一起上传。把该文件放进所选目录（任意子目录均可，按文件名识别）后重试。
+
+**4. 手续费整列为空**
+按日志顺序排查：规则表是否加载（条数）→ 源簿是否有 `员工信息-X月` 表 → 该表是否含 `姓名/运营项目/开户行` → 运营项目是否在规则表中（日志会列 `【项目提示】`）→ 规则文本是否命中 A~N 任一类别。
+
+---
+
+## 版本控制约定
+
+`.gitignore` 已排除：`target/`、`vue/node_modules/`、`vue/dist/`、`src/main/resources/static/{js,css,img,index.html,logo.png}`、`uploads/`、`logs/`、`docker-compose.yml`、`.workbuddy/`。
+
+即：**仓库只保存源码与配置**，构建产物与部署编排文件不入库。
