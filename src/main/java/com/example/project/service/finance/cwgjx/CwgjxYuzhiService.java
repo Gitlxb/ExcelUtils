@@ -1,6 +1,9 @@
 package com.example.project.service.finance.cwgjx;
 
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.IndexedColorMap;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 财务工具箱 - 预支处理
- * 基于 yuzhi_frame.py 重构，含 8 条手续费规则
+ * 基于 yuzhi_frame.py 重构，含 7 条条件规则 + 温州长江汽车电子专属规则 + 默认费率
  */
 @Service
 public class CwgjxYuzhiService {
@@ -58,7 +61,7 @@ public class CwgjxYuzhiService {
                 }
             }
 
-            // 6条条件规则
+            // 条件规则（命中即免手续费 E=0）
             for (int r = 1; r <= lastRow; r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
@@ -66,23 +69,21 @@ public class CwgjxYuzhiService {
                 boolean zero = false;
                 if (h.contains("招商银行") && !c.contains("伟明")) zero = true;
                 if (i.contains("驻厂")) zero = true;
+                if (i.contains("垫付")) zero = true;
                 if (c.contains("伟明") && h.contains("中信银行")) zero = true;
                 if (c.contains("伟明") && h.contains("招商银行") && i.contains("垫付")) zero = true;
                 if (c.contains("瑞立") && (h.contains("招商银行") || h.contains("邮政"))) zero = true;
                 if (c.contains("中世")) zero = true;
-                // 规则7: 温州长江汽车电子 + 民生银行 -> 免手续费；其余银行 -> 5元
-                if (c.contains("温州长江汽车电子") && h.contains("民生银行")) zero = true;
-                if (c.contains("温州长江汽车电子") && !h.contains("民生银行")) {
-                    Cell e = row.getCell(colE);
-                    if (e == null) e = row.createCell(colE);
-                    e.setCellValue(5);
-                }
-                // 规则8: 中铭工程 + 招商银行/垫付 -> 免手续费
-                if (c.contains("中铭工程") && (h.contains("招商银行") || i.contains("垫付"))) zero = true;
                 if (zero) {
                     Cell e = row.getCell(colE);
                     if (e == null) e = row.createCell(colE);
                     e.setCellValue(0);
+                }
+                // 温州长江汽车电子：民生银行不扣，其余统一 5 元（优先级最高，最后覆盖）
+                if (c.contains("温州长江汽车电子")) {
+                    Cell e = row.getCell(colE);
+                    if (e == null) e = row.createCell(colE);
+                    e.setCellValue(h.contains("民生银行") ? 0 : 5);
                 }
             }
 
@@ -93,14 +94,8 @@ public class CwgjxYuzhiService {
                 Cell e = row.getCell(colE);
                 if (e == null || e.getCellType() == CellType.BLANK) {
                     double d = getDbl(row, colD);
-                    String c = getStr(row, colC);
                     if (e == null) e = row.createCell(colE);
-                    // 规则8: 中铭工程 特殊费率（仅对未命中免扣条件的行生效）
-                    if (c.contains("中铭工程")) {
-                        e.setCellValue(d <= 1000 ? 10 : d * 0.01);
-                    } else {
-                        e.setCellValue(d <= 500 ? 5 : d * 0.01);
-                    }
+                    e.setCellValue(d <= 500 ? 5 : d * 0.01);
                 }
             }
 
@@ -144,9 +139,7 @@ public class CwgjxYuzhiService {
             }
 
             Workbook newWb = new XSSFWorkbook();
-            CellStyle headerStyle = newWb.createCellStyle();
-            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            // 表头保持无填充（与 Python 侧一致，不设置任何 CellStyle）
             Row headerRow = sheet.getRow(0);
             AtomicInteger idx = new AtomicInteger(0);
             int total = map.size();
@@ -160,7 +153,7 @@ public class CwgjxYuzhiService {
                     for (int c = 0; c <= 11; c++) {
                         Cell sc = headerRow.getCell(c);
                         Cell tc = nh.createCell(c);
-                        if (sc != null) { copyCell(sc, tc); tc.setCellStyle(headerStyle); }
+                        if (sc != null) copyCell(sc, tc);
                     }
                 }
                 int nr = 1;
@@ -192,8 +185,10 @@ public class CwgjxYuzhiService {
             CellStyle yellow = wb.createCellStyle();
             yellow.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
             yellow.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            CellStyle dupRed = wb.createCellStyle();
-            dupRed.setFillForegroundColor(IndexedColors.RED.getIndex());
+            // 与 Python 侧 duplicate_fill (#FFC7CE) 保持一致；POI 标准调色板无此色，需自定义 RGB
+            XSSFCellStyle dupRed = ((XSSFWorkbook) wb).createCellStyle();
+            dupRed.setFillForegroundColor(new XSSFColor(
+                    new byte[]{(byte) 0xFF, (byte) 0xC7, (byte) 0xCE}, (IndexedColorMap) null));
             dupRed.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
             int wsIdx = 0;
@@ -216,8 +211,9 @@ public class CwgjxYuzhiService {
                     Row row = cs.getRow(r);
                     if (row == null) continue;
                     String iVal = getStr(row, 8), cVal = getStr(row, 2), hVal = getStr(row, 7);
-                    if (iVal.contains("驻厂")) for (int c : new int[]{3,4,5,6,7,8}) setStyle(row, c, yellow);
-                    if (!(cVal.contains("伟明") && hVal.contains("招商银行")) && hVal.contains("招商银行"))
+                    if (iVal.contains("驻厂") || iVal.contains("垫付"))
+                        for (int c : new int[]{3,4,5,6,7,8}) setStyle(row, c, yellow);
+                    if (hVal.contains("招商银行"))
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
                     if (cVal.contains("伟明") && hVal.contains("中信银行"))
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
@@ -225,14 +221,9 @@ public class CwgjxYuzhiService {
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
                     if (cVal.contains("中世"))
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
-                    // 规则7标黄: 温州长江汽车电子 + 民生银行 -> 黄色标记 D/E/F/G/H 列
+                    // 温州长江汽车电子 + 民生银行 -> D/E/F/G/H 列
                     if (cVal.contains("温州长江汽车电子") && hVal.contains("民生银行"))
                         for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
-                    // 规则8标黄: 中铭工程 + 招商银行 -> D/E/F/G/H; 中铭工程 + 垫付 -> D/E/F/G/H/I
-                    if (cVal.contains("中铭工程") && hVal.contains("招商银行"))
-                        for (int c : new int[]{3,4,5,6,7}) setStyle(row, c, yellow);
-                    if (cVal.contains("中铭工程") && iVal.contains("垫付"))
-                        for (int c : new int[]{3,4,5,6,7,8}) setStyle(row, c, yellow);
                 }
 
                 // J/K重复值

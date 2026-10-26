@@ -22,24 +22,22 @@ public class CwGysQzyController extends FinanceBaseController {
     /**
      * POST /api/finance/merge-supplier
      * 功能：供应商 Excel 合并（cw_gys_qzy.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/merge-supplier")
     public Map<String, Object> mergeSupplier(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("sheetName") String sheetName) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            String outputPath = cwGysQzyService.mergeExcelFiles(file, sheetName, uploadDir);
-            result.put("success", true);
-            result.put("message", "合并完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam("sheetName") String sheetName,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "merge-supplier", "供应商合并",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = cwGysQzyService.mergeExcelFiles(safeFile, sheetName, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "合并完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 }

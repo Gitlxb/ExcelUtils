@@ -3,6 +3,7 @@ package com.example.project.controller.general;
 import com.example.project.service.general.BiaogegesiZhService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,23 +22,21 @@ public class BiaogegesiZhController extends GeneralBaseController {
 
     /**
      * POST /api/general/convert-format
-     * 功能：表格格式转换（biaogegesi_zh.py）
-     * 将 ZIP 包内的 .xls/.csv 等批量转为 .xlsx
+     * 功能：表格格式转换（异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}）
      */
     @PostMapping("/convert-format")
-    public Map<String, Object> convertFormat(@RequestParam("file") MultipartFile file) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = biaogegesiZhService.convertToXlsx(file, uploadDir);
-            result.put("success", true);
-            result.put("message", "格式转换完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+    public Map<String, Object> convertFormat(
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "general", "convert-format", "表格格式转换",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = biaogegesiZhService.convertToXlsx(safeFile, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "格式转换完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 }

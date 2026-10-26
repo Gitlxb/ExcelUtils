@@ -10,13 +10,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 绩效考核 - 员工在职月份计算（tenure_months_calculator.py 转 Java）
@@ -26,15 +23,15 @@ import java.util.stream.Collectors;
  * 2. 分组键 = 姓名 + 身份证号码（同名不同身份证视为不同人）。
  * 3. 行类型：在职（忽略离职日期）、离职（有入职+离职）、其他（原样保留）。
  * 4. 主在职区间：起点 = max(在职最早入职, 离职最早入职) + 起算偏移（默认从次日算起）；
- *    终点 = min(统计月末, 在职截止日)。
+ *    终点 = min(截止日期, 截止日期)，即截止日期同时作为 statEnd 与 asOf（与 Python 一致）。
  * 5. 短离职区间：每条离职行 [入职起算日, 离职日]，从主在职区间减去其并集。
  * 6. 按 (年,月) 聚合剩余天数，展开到在职行；离职行按自身短离职区间展开。
  * 7. 新增列：在职月份（日期单元格 yyyy/m）/ 在职天数 / 总在职天数（按人合并）。
+ * 8. 月份展开仅保留 [起始日期, 截止日期] 范围内的在职月份；范围内无任何月份的人员仍保留一行（月份留空、天数 0）。
  */
 @Service
 public class JxkhTenureService {
 
-    private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter[] DATE_PARSERS = {
             DateTimeFormatter.ofPattern("yyyy/MM/dd"),
@@ -60,23 +57,40 @@ public class JxkhTenureService {
     }
 
     // ============================ 入口 ============================
-    public AnalyzeResult analyze(MultipartFile file, String sheetName, String statMonth,
-                                 String asOfDate, boolean mergeTotalDays, String uploadDir) throws Exception {
+    public AnalyzeResult analyze(MultipartFile file, String sheetName, String startDate,
+                                 String endDate, boolean mergeTotalDays,
+                                 String uploadDir) throws Exception {
         File dir = new File(uploadDir);
         if (!dir.exists()) dir.mkdirs();
 
         File tempFile = new File(dir, UUID.randomUUID() + "_" + file.getOriginalFilename());
         file.transferTo(tempFile);
 
+        // 输出文件名跟随上传文件：「原名 - 员工在职月份结果.xlsx」
+        String outName = buildOutputName(file.getOriginalFilename());
+
         try {
-            return doAnalyze(tempFile, sheetName, statMonth, asOfDate, mergeTotalDays, uploadDir);
+            return doAnalyze(tempFile, sheetName, startDate, endDate, mergeTotalDays, uploadDir, outName);
         } finally {
             tempFile.delete();
         }
     }
 
-    private AnalyzeResult doAnalyze(File inputFile, String sheetName, String statMonth,
-                                    String asOfDate, boolean mergeTotalDays, String uploadDir) throws Exception {
+    /** 由上传文件名生成输出文件名：「原名 - 员工在职月份结果.xlsx」，并清洗非法字符 */
+    private String buildOutputName(String originalFilename) {
+        String base = (originalFilename == null) ? "" : originalFilename;
+        base = base.substring(base.lastIndexOf('/') + 1);   // 去路径前缀（兼容旧浏览器）
+        base = base.substring(base.lastIndexOf('\\') + 1);
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) base = base.substring(0, dot);          // 去扩展名
+        base = base.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (base.isEmpty()) base = "员工信息";
+        return base + " - 员工在职月份结果.xlsx";
+    }
+
+    private AnalyzeResult doAnalyze(File inputFile, String sheetName, String startDate,
+                                    String endDate, boolean mergeTotalDays,
+                                    String uploadDir, String outName) throws Exception {
         List<String> logs = new ArrayList<>();
         AnalyzeResult result = new AnalyzeResult();
         result.logs = logs;
@@ -124,23 +138,33 @@ public class JxkhTenureService {
             if (idxEmp == null) logs.add("⚠️ 未识别到『姓名』列。");
             if (idxId == null) logs.add("⚠️ 未识别到『身份证号码』列，将仅按姓名分组。");
 
-            // ---- 解析统计月末与在职截止日 ----
-            YearMonth statYm = YearMonth.parse(statMonth.trim(), MONTH_FMT);
-            LocalDate statFirst = statYm.atDay(1);
-            LocalDate statEnd = statYm.atEndOfMonth();
-
-            LocalDate asOf;
-            if (asOfDate == null || asOfDate.trim().isEmpty() || "today".equalsIgnoreCase(asOfDate.trim())) {
-                asOf = LocalDate.now();
-            } else {
-                asOf = parseDate(asOfDate.trim());
-                if (asOf == null) throw new Exception("在职截止日格式不正确：" + asOfDate);
+            // ---- 解析起始日期与截止日期 ----
+            LocalDate rangeStart = null;
+            if (startDate != null && !startDate.trim().isEmpty()) {
+                rangeStart = parseDate(startDate.trim());
+                if (rangeStart == null) throw new Exception("起始日期格式不正确：" + startDate);
             }
 
-            // 含入职日：固定默认 false（从入职次日算起），界面不暴露该参数
-            boolean includeHireDay = false;
-            logs.add("统计截止月份：" + statMonth + " | 含入职日：" + includeHireDay);
-            logs.add("在职天数截止日(as_of)：" + asOf + "（主在职终点不超过该日）");
+            LocalDate rangeEnd;
+            if (endDate == null || endDate.trim().isEmpty()) {
+                rangeEnd = LocalDate.now();
+            } else {
+                rangeEnd = parseDate(endDate.trim());
+                if (rangeEnd == null) throw new Exception("截止日期格式不正确：" + endDate);
+            }
+
+            if (rangeStart != null && rangeStart.isAfter(rangeEnd)) {
+                throw new Exception("起始日期不能晚于截止日期");
+            }
+
+            // 截止日期同时作为 statEnd 和 asOf（与 Python 一致）
+            LocalDate statEnd = rangeEnd;
+            LocalDate asOf = rangeEnd;
+
+            logs.add("截止日期：" + rangeEnd + "（统计截止 / 在职截止）");
+            if (rangeStart != null) {
+                logs.add("起始日期：" + rangeStart + "（仅展开该范围内的在职月份）");
+            }
 
             // ---- 读取数据行 ----
             List<RawRow> rows = new ArrayList<>();
@@ -189,7 +213,7 @@ public class JxkhTenureService {
                             leaveRecs.add(new LeaveRec(rr, null, null));
                         } else {
                             LocalDate leaveEnd = (rr.depart != null) ? minDate(rr.depart, statEnd) : statEnd;
-                            Interval iv = computeLeaveInterval(rr.hire, leaveEnd, includeHireDay);
+                            Interval iv = computeLeaveInterval(rr.hire, leaveEnd, false);
                             leaveIntervals.add(iv);
                             leaveRecs.add(new LeaveRec(rr, iv.start, iv.end));
                         }
@@ -200,7 +224,8 @@ public class JxkhTenureService {
                 }
 
                 Map<YM, Integer> mainDays = computeMainEmployment(
-                        employedHires, leaveIntervals, statEnd, asOf, includeHireDay);
+                        employedHires, leaveIntervals, statEnd, asOf,
+                        rangeStart, rangeEnd);
 
                 // 在职行
                 if (!employedRows.isEmpty()) {
@@ -230,11 +255,13 @@ public class JxkhTenureService {
                 for (LeaveRec lr : leaveRecs) {
                     if (lr.start == null || lr.start.isAfter(lr.end)) {
                         OutRow or = new OutRow(lr.row);
-                        if (lr.start == null) {
-                            or.tenureMonth = null;
-                        } else {
-                            LocalDate h = lr.row.hire;
-                            or.tenureMonth = (h != null) ? LocalDate.of(h.getYear(), h.getMonthValue(), 1) : null;
+                        LocalDate h = lr.row.hire;
+                        if (h != null) {
+                            YM ym = new YM(h.getYear(), h.getMonthValue());
+                            boolean inRange = (rangeStart == null || rangeEnd == null)
+                                    || monthInRange(ym, rangeStart, rangeEnd);
+                            // 范围外则月份留空，但仍保留该行（人员不丢弃）
+                            or.tenureMonth = inRange ? LocalDate.of(ym.year, ym.month, 1) : null;
                         }
                         or.tenureDays = 0;
                         outRows.add(or);
@@ -242,10 +269,24 @@ public class JxkhTenureService {
                         Map<YM, Integer> md = daysByMonth(lr.start, lr.end);
                         List<YM> sorted = new ArrayList<>(md.keySet());
                         sorted.sort(Comparator.comparingLong(YM::key));
+                        int emitted = 0;
                         for (YM ym : sorted) {
+                            // 仅保留 [起始日期, 截止日期] 范围内的月份
+                            if (rangeStart != null && rangeEnd != null
+                                    && !monthInRange(ym, rangeStart, rangeEnd)) {
+                                continue;
+                            }
                             OutRow or = new OutRow(lr.row);
                             or.tenureMonth = LocalDate.of(ym.year, ym.month, 1);
                             or.tenureDays = md.get(ym);
+                            outRows.add(or);
+                            emitted++;
+                        }
+                        // 范围内一行都没有：仍保留一行（月份留空、0 天），人员不丢弃
+                        if (emitted == 0) {
+                            OutRow or = new OutRow(lr.row);
+                            or.tenureMonth = null;
+                            or.tenureDays = 0;
                             outRows.add(or);
                         }
                     }
@@ -275,7 +316,7 @@ public class JxkhTenureService {
                                     : "   未合并：总在职天数列按行展开（每行 = 该行在职天数）");
 
             // ---- 写出 Excel ----
-            File outFile = new File(uploadDir, "员工在职月份结果.xlsx");
+            File outFile = new File(uploadDir, outName);
             writeOutput(origCols, outRows, mergeTotalDays, idxEmp, idxId, outFile, logs);
             result.filePath = outFile.getAbsolutePath();
         }
@@ -339,11 +380,11 @@ public class JxkhTenureService {
                 if (or.tenureMonth != null) {
                     mCell.setCellValue(or.tenureMonth);
                     mCell.setCellStyle(monthStyle);
+                    // 在职天数（仅写有月份的计算行；范围外保留行留空，不显示 0）
+                    row.createCell(baseC + 1).setCellValue(or.tenureDays);
+                    // 总在职天数（同上）
+                    row.createCell(baseC + 2).setCellValue(totalDaysMap.get(or));
                 }
-                // 在职天数
-                row.createCell(baseC + 1).setCellValue(or.tenureDays);
-                // 总在职天数
-                row.createCell(baseC + 2).setCellValue(totalDaysMap.get(or));
             }
 
             // 合并「总在职天数」列：按 (姓名+身份证) 连续块合并 + 垂直居中
@@ -576,11 +617,11 @@ public class JxkhTenureService {
         return includeHireDay ? hire : hire.plusDays(1);
     }
 
-    /** 计算某个人主在职区间扣除短离职后的年月天数 */
+    /** 计算某个人主在职区间扣除短离职后的年月天数，仅保留 [rangeStart, rangeEnd] 范围内的月份 */
     private Map<YM, Integer> computeMainEmployment(List<LocalDate> employedHires,
                                                    List<Interval> leaveIntervals,
                                                    LocalDate statEnd, LocalDate asOf,
-                                                   boolean includeHireDay) {
+                                                   LocalDate rangeStart, LocalDate rangeEnd) {
         if (employedHires.isEmpty()) return new LinkedHashMap<>();
 
         LocalDate earliestHire = employedHires.stream().min(Comparator.naturalOrder()).get();
@@ -593,7 +634,7 @@ public class JxkhTenureService {
             baseStart = earliestHire;
         }
 
-        LocalDate mainStart = hireStartDate(baseStart, includeHireDay);
+        LocalDate mainStart = hireStartDate(baseStart, false);
         LocalDate mainEnd = minDate(statEnd, asOf);
 
         if (mainStart.isAfter(mainEnd)) return new LinkedHashMap<>();
@@ -619,12 +660,31 @@ public class JxkhTenureService {
                 result.merge(en.getKey(), en.getValue(), Integer::sum);
             }
         }
+
+        // 仅保留 [起始日期, 截止日期] 范围内的月份
+        if (rangeStart != null && rangeEnd != null) {
+            Map<YM, Integer> filtered = new LinkedHashMap<>();
+            for (Map.Entry<YM, Integer> en : result.entrySet()) {
+                if (monthInRange(en.getKey(), rangeStart, rangeEnd)) {
+                    filtered.put(en.getKey(), en.getValue());
+                }
+            }
+            return filtered;
+        }
         return result;
     }
 
     /** 单条离职行的短离职闭区间 [start, end] */
     private Interval computeLeaveInterval(LocalDate hire, LocalDate depart, boolean includeHireDay) {
         return new Interval(hireStartDate(hire, includeHireDay), depart);
+    }
+
+    /** 判断 (year, month) 是否与 [rangeStart, rangeEnd] 区间有重叠 */
+    private boolean monthInRange(YM ym, LocalDate rangeStart, LocalDate rangeEnd) {
+        LocalDate monthStart = LocalDate.of(ym.year, ym.month, 1);
+        int dim = LocalDate.of(ym.year, ym.month, 1).lengthOfMonth();
+        LocalDate monthEnd = LocalDate.of(ym.year, ym.month, dim);
+        return !monthStart.isAfter(rangeEnd) && !monthEnd.isBefore(rangeStart);
     }
 
     // ============================ 内部数据类 ============================

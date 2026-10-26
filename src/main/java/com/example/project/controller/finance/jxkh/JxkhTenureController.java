@@ -23,28 +23,27 @@ public class JxkhTenureController extends FinanceBaseController {
     /**
      * POST /api/finance/jxkh/tenure
      * 功能：员工在职月份计算（tenure_months_calculator.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/jxkh/tenure")
     public Map<String, Object> jxkhTenure(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "sheetName", required = false) String sheetName,
-            @RequestParam("statMonth") String statMonth,
-            @RequestParam(value = "asOfDate", required = false) String asOfDate,
-            @RequestParam(value = "mergeTotalDays", defaultValue = "true") boolean mergeTotalDays) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            JxkhTenureService.AnalyzeResult ar = jxkhTenureService.analyze(
-                    file, sheetName, statMonth, asOfDate, mergeTotalDays, uploadDir);
-            result.put("success", true);
-            result.put("message", "在职月份计算完成");
-            result.put("fileName", new File(ar.filePath).getName());
-            result.put("logs", ar.logs);
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "mergeTotalDays", defaultValue = "false") boolean mergeTotalDays,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "jxkh/tenure", "在职月份计算",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    JxkhTenureService.AnalyzeResult ar = jxkhTenureService.analyze(
+                            safeFile, sheetName, startDate, endDate, mergeTotalDays, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "在职月份计算完成");
+                    result.put("fileName", new File(ar.filePath).getName());
+                    result.put("logs", ar.logs);
+                    return result;
+                });
     }
 }

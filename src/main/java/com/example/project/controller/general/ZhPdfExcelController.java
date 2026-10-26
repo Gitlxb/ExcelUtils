@@ -3,6 +3,7 @@ package com.example.project.controller.general;
 import com.example.project.service.general.ZhPdfExcelService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,22 +22,21 @@ public class ZhPdfExcelController extends GeneralBaseController {
 
     /**
      * POST /api/general/pdf-to-excel
-     * 功能：PDF 转 Excel（zh_pdf_Excel.py）
+     * 功能：PDF转Excel（异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}）
      */
     @PostMapping("/pdf-to-excel")
-    public Map<String, Object> pdfToExcel(@RequestParam("file") MultipartFile file) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = zhPdfExcelService.convertPdfToExcel(file, uploadDir);
-            result.put("success", true);
-            result.put("message", "PDF 转换完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+    public Map<String, Object> pdfToExcel(
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "general", "pdf-to-excel", "PDF转Excel",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = zhPdfExcelService.convertPdfToExcel(safeFile, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "PDF 转换完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 }

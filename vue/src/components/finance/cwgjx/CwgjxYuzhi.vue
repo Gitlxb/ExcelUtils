@@ -44,7 +44,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'CwgjxYuzhi',
@@ -74,7 +74,7 @@ export default {
       formData.append('file', this.feeFile)
       this.loading = true
       this.message = ''
-      axios.post('/api/finance/toolbox/fee-split', formData).then(res => {
+      postAsync('/api/finance/toolbox/fee-split', formData).then(res => {
         if (res.data.success) {
           this.showMessage(res.data.message, 'success')
           this.feeDownloadName = res.data.fileName

@@ -561,6 +561,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../utils/asyncTask'
 
 export default {
   name: 'GzbPipeiCard',
@@ -809,7 +810,7 @@ export default {
         formData.append('jiaKey', this.jiaKey)
         formData.append('neiKey', this.neiKey)
         formData.append('fieldMapping', JSON.stringify(this.fieldMappings))
-        const res = await axios.post('/api/hr/gzb-pipei/mode-a', formData)
+        const res = await postAsync('/api/hr/gzb-pipei/mode-a', formData)
         if (res.data.success) {
           this.downloadUrl = `/api/hr/download/${res.data.fileName}`
           this.compareRows = res.data.compareRows
@@ -926,7 +927,7 @@ export default {
         formData.append('keyA', this.keyA)
         formData.append('keyB', this.keyB)
         formData.append('fieldMapping', JSON.stringify(this.fieldMappingsB))
-        const res = await axios.post('/api/hr/gzb-pipei/mode-b', formData)
+        const res = await postAsync('/api/hr/gzb-pipei/mode-b', formData)
         if (res.data.success) {
           this.downloadUrl = `/api/hr/download/${res.data.fileName}`
           this.compareRows = res.data.compareRows

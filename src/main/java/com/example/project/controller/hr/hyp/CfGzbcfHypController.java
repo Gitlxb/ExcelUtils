@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -92,6 +93,7 @@ public class CfGzbcfHypController extends HrBaseController {
      * 功能：工资表拆分（cf_gzbcf_hyp.py）
      * 按指定列拆分工资表，保留格式和公式
      * 支持自定义分组（groups 参数），不传则按值各自拆分
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @SuppressWarnings("unchecked")
     @PostMapping("/split-salary")
@@ -99,29 +101,26 @@ public class CfGzbcfHypController extends HrBaseController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("sheetName") String sheetName,
             @RequestParam("splitColName") String splitColName,
-            @RequestParam(value = "groups", required = false, defaultValue = "") String groupsJson) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            String originalName = file.getOriginalFilename();
-            String outputPath;
-            if (groupsJson != null && !groupsJson.trim().isEmpty()) {
-                // 解析 groups JSON，格式：[[\"IT部\",\"市场部\"],[\"行政部\"]]
-                List<List<String>> groups = parseGroupsJson(groupsJson);
-                outputPath = cfGzbcfHypService.splitSalaryWithGroups(file, originalName, sheetName, splitColName, groups, uploadDir);
-            } else {
-                outputPath = cfGzbcfHypService.splitSalary(file, originalName, sheetName, splitColName, uploadDir);
-            }
-            result.put("success", true);
-            result.put("message", "工资表拆分完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "groups", required = false, defaultValue = "") String groupsJson,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "hr", "split-salary", "工资表拆分",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String originalName = safeFile.getOriginalFilename();
+                    String outputPath;
+                    if (groupsJson != null && !groupsJson.trim().isEmpty()) {
+                        // 解析 groups JSON，格式：[[\"IT部\",\"市场部\"],[\"行政部\"]]
+                        List<List<String>> groups = parseGroupsJson(groupsJson);
+                        outputPath = cfGzbcfHypService.splitSalaryWithGroups(safeFile, originalName, sheetName, splitColName, groups, uploadDir);
+                    } else {
+                        outputPath = cfGzbcfHypService.splitSalary(safeFile, originalName, sheetName, splitColName, uploadDir);
+                    }
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "工资表拆分完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 
     private final ObjectMapper objectMapper = new ObjectMapper();

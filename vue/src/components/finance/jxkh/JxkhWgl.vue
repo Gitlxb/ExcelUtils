@@ -95,6 +95,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 const customLocale = {
@@ -200,7 +201,7 @@ export default {
       this.loading = true
       this.message = ''
       this.downloadFileName = ''
-      axios.post(endpoint, formData).then(res => {
+      postAsync(endpoint, formData).then(res => {
         if (res.data.success) {
           this.showMessage(res.data.message, 'success')
           this.downloadFileName = res.data.fileName

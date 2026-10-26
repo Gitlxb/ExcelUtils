@@ -3,49 +3,18 @@
     <div class="hbgs-page-header">
       <h2 class="hbgs-page-title">合并个税</h2>
       <p class="hbgs-page-desc">
-        递归合并个税统计表，按手续费规则计算银行手续费。上传规则表和数据文件夹后，自动处理并生成汇总表。
+        递归合并个税统计表，按手续费规则计算银行手续费。只需选择数据文件夹（其中须包含
+        <strong>收取手续费银行信息.xlsx</strong>），系统自动识别规则表并生成汇总表。
       </p>
     </div>
 
-    <!-- 步骤1：上传规则表 -->
-    <el-divider content-position="left">步骤1：上传手续费规则表</el-divider>
+    <!-- 唯一输入：数据文件夹（规则表从目录内自动识别，不再单独上传） -->
+    <el-divider content-position="left">选择数据文件夹</el-divider>
     <el-row :gutter="16" style="margin-bottom:12px">
       <el-col :span="12">
-        <div class="hbgs-upload-label">手续费规则表（.xlsx/.xls）</div>
-        <el-upload
-          ref="uploadRules"
-          class="hbgs-upload"
-          drag
-          :auto-upload="false"
-          :limit="1"
-          :on-change="handleRulesChange"
-          :on-exceed="onExceed"
-          accept=".xlsx,.xls"
-        >
-          <el-icon class="hbgs-upload-icon"><UploadFilled /></el-icon>
-          <div>将规则表拖到此处，或 <em>点击选择</em></div>
-          <div v-if="rulesFile" class="hbgs-file-name">{{ rulesFile.name }}</div>
-        </el-upload>
-      </el-col>
-      <el-col :span="12">
-        <div class="hbgs-upload-label">规则表预检</div>
-        <el-button type="primary" :loading="previewing" :disabled="!rulesFile" @click="previewRules">
-          {{ previewing ? '预检中...' : '预检规则表' }}
-        </el-button>
-        <div v-if="rulesPreview" class="hbgs-preview-info">
-          <el-tag type="success" size="large">
-            {{ rulesPreview.worksheet }}，共 {{ rulesPreview.ruleCount }} 条规则
-          </el-tag>
+        <div class="hbgs-upload-label">
+          包含个税统计表的文件夹（递归子目录所有 Excel，须含「收取手续费银行信息.xlsx」）
         </div>
-        <div v-if="rulesError" class="hbgs-error">{{ rulesError }}</div>
-      </el-col>
-    </el-row>
-
-    <!-- 步骤2：上传数据文件夹 -->
-    <el-divider content-position="left">步骤2：上传数据文件夹</el-divider>
-    <el-row :gutter="16" style="margin-bottom:12px">
-      <el-col :span="12">
-        <div class="hbgs-upload-label">包含个税统计表的文件夹（递归子目录所有 Excel）</div>
         <div class="hbgs-folder-upload-area" @click="triggerFolderInput">
           <input
             ref="folderInput"
@@ -59,8 +28,14 @@
           <el-icon class="hbgs-upload-icon"><FolderOpened /></el-icon>
           <div>点击此处 <em>选择文件夹</em></div>
           <div v-if="dataFileCount > 0" class="hbgs-file-name">
-            已选择 {{ dataFileCount }} 个 Excel 文件
+            已选择 {{ dataFileCount }} 个数据文件
           </div>
+        </div>
+        <div v-if="rulesFileName" class="hbgs-preview-info">
+          <el-tag type="success" size="large">已识别规则表：{{ rulesFileName }}</el-tag>
+        </div>
+        <div v-if="folderChecked && !rulesFileName" class="hbgs-error">
+          所选目录需要包含「收取手续费银行信息.xlsx」，未检测到该文件，已停止处理。
         </div>
       </el-col>
       <el-col :span="12">
@@ -68,7 +43,7 @@
         <el-button
           type="primary"
           :loading="processing"
-          :disabled="!rulesFile || !dataFiles.length"
+          :disabled="!canStart"
           @click="startMerge"
           size="large"
         >
@@ -94,6 +69,7 @@
         <el-descriptions-item label="扫描文件">{{ mergeStats.totalFiles }}</el-descriptions-item>
         <el-descriptions-item label="有效数据行">{{ mergeStats.totalRows }}</el-descriptions-item>
         <el-descriptions-item label="跳过文件">{{ mergeStats.skipped }}</el-descriptions-item>
+        <el-descriptions-item label="规则条数">{{ mergeStats.ruleCount }}</el-descriptions-item>
       </el-descriptions>
     </div>
 
@@ -134,19 +110,25 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { postAsync } from '../../utils/asyncTask'
+
+/** 规则表固定文件名（去扩展名后比较） */
+const RULES_FILE_BASE = '收取手续费银行信息'
+/** 服务端单次请求上限（application.properties: max-request-size=300MB） */
+const MAX_REQUEST_MB = 300
 
 export default {
   name: 'HbgsCard',
   data() {
     return {
-      rulesFile: null,
-      rulesPreview: null,
-      rulesError: '',
-      previewing: false,
-
+      /** 目录内全部 Excel（含规则表本身，后端负责识别并剔除） */
       dataFiles: [],
+      /** 展示用：排除规则表后的数据文件数 */
       dataFileCount: 0,
+      /** 已识别到的规则表文件名，空串表示未找到 */
+      rulesFileName: '',
+      /** 是否已进行过一次目录选择（用于控制"未包含规则表"提示的显示） */
+      folderChecked: false,
 
       processing: false,
       progressPercent: 0,
@@ -160,80 +142,74 @@ export default {
       logs: []
     }
   },
+  computed: {
+    canStart() {
+      return this.dataFiles.length > 0 && !!this.rulesFileName
+    }
+  },
   methods: {
-    // ========== 规则表 ==========
-
-    handleRulesChange(file) {
-      this.rulesFile = file?.raw || null
-      this.rulesPreview = null
-      this.rulesError = ''
-    },
-    onExceed() {
-      this.$message.warning('只能选择1个文件')
-    },
-
-    previewRules() {
-      if (!this.rulesFile) {
-        this.$message.warning('请先选择规则表文件')
-        return
-      }
-      this.previewing = true
-      this.rulesError = ''
-      this.rulesPreview = null
-
-      const formData = new FormData()
-      formData.append('rulesFile', this.rulesFile)
-
-      axios.post('/api/finance/hbgs/preview-rules', formData)
-        .then(res => {
-          if (res.data.success) {
-            this.rulesPreview = {
-              worksheet: res.data.worksheet || '',
-              ruleCount: res.data.ruleCount || 0
-            }
-            if (res.data.logs) {
-              this.logs = res.data.logs.concat(this.logs)
-            }
-          } else {
-            this.rulesError = res.data.message || '预检失败'
-          }
-        })
-        .catch(err => {
-          this.rulesError = err.response?.data?.message || err.message
-        })
-        .finally(() => {
-          this.previewing = false
-        })
-    },
-
-    // ========== 文件夹上传 ==========
-
+    // ========== 目录选择 ==========
     triggerFolderInput() {
       this.$refs.folderInput.click()
     },
+
+    /** 文件名是否为规则表（忽略扩展名大小写，兼容 .xls） */
+    isRulesFileName(name) {
+      if (!name) return false
+      const dot = name.lastIndexOf('.')
+      if (dot <= 0) return false
+      const base = name.slice(0, dot).trim()
+      const ext = name.slice(dot + 1).toLowerCase()
+      return (ext === 'xlsx' || ext === 'xls') && base === RULES_FILE_BASE
+    },
+
     handleFolderChange(e) {
       const files = e.target.files
-      if (files && files.length > 0) {
-        this.dataFiles = Array.from(files).filter(f => {
-          const name = f.name.toLowerCase()
-          return (name.endsWith('.xlsx') || name.endsWith('.xls')) && !f.name.startsWith('~$')
-        })
-        this.dataFileCount = this.dataFiles.length
-      } else {
+      this.folderChecked = false
+      this.rulesFileName = ''
+
+      if (!files || files.length === 0) {
         this.dataFiles = []
         this.dataFileCount = 0
+        return
+      }
+
+      const all = Array.from(files).filter(f => {
+        const name = f.name.toLowerCase()
+        return (name.endsWith('.xlsx') || name.endsWith('.xls')) && !f.name.startsWith('~$')
+      })
+
+      const rules = all.find(f => this.isRulesFileName(f.name))
+      this.rulesFileName = rules ? rules.name : ''
+      this.dataFiles = all
+      this.dataFileCount = Math.max(0, all.length - (rules ? 1 : 0))
+      this.folderChecked = true
+
+      // 允许重复选择同一目录（否则 change 不触发）
+      e.target.value = ''
+
+      if (!rules) {
+        this.$message.error('所选择的目录需要包含「' + RULES_FILE_BASE + '.xlsx」，已停止处理。')
+        return
+      }
+
+      // 体积预警：当前服务端单次请求上限 50MB
+      const totalMb = all.reduce((s, f) => s + (f.size || 0), 0) / 1048576
+      if (totalMb > MAX_REQUEST_MB * 0.9) {
+        this.$message.warning(
+          `所选目录合计约 ${totalMb.toFixed(1)} MB，接近/超过上传上限 ${MAX_REQUEST_MB} MB，可能上传失败`
+        )
       }
     },
 
     // ========== 合并 ==========
-
     startMerge() {
-      if (!this.rulesFile) {
-        this.$message.warning('请先选择手续费规则表')
-        return
-      }
       if (!this.dataFiles.length) {
         this.$message.warning('请先选择数据文件夹')
+        return
+      }
+      if (!this.rulesFileName) {
+        this.$message.error('所选择的目录需要包含「' + RULES_FILE_BASE + '.xlsx」，已停止处理。')
         return
       }
 
@@ -247,7 +223,7 @@ export default {
       this.mergeError = ''
       this.logs = ['开始合并...']
 
-      // 模拟进度
+      // 模拟进度（后端异步任务，真实进度待后续接入轮询）
       const timer = setInterval(() => {
         if (this.progressPercent < 90) {
           this.progressPercent += 5
@@ -256,10 +232,10 @@ export default {
       }, 600)
 
       const formData = new FormData()
-      formData.append('rulesFile', this.rulesFile)
+      // 规则表随目录一起上传，由后端按文件名识别并剔除
       this.dataFiles.forEach(f => formData.append('dataFiles', f))
 
-      axios.post('/api/finance/hbgs/merge', formData, {
+      postAsync('/api/finance/hbgs/merge', formData, {
         timeout: 600000  // 10分钟超时（大文件可能需要较长时间）
       })
         .then(res => {
@@ -272,7 +248,8 @@ export default {
             this.mergeStats = {
               totalFiles: res.data.totalFiles,
               totalRows: res.data.totalRows,
-              skipped: res.data.skipped
+              skipped: res.data.skipped,
+              ruleCount: res.data.ruleCount
             }
             this.mergeWarnings = res.data.warnings || []
           } else {
@@ -302,11 +279,10 @@ export default {
     },
 
     clearAll() {
-      this.rulesFile = null
-      this.rulesPreview = null
-      this.rulesError = ''
       this.dataFiles = []
       this.dataFileCount = 0
+      this.rulesFileName = ''
+      this.folderChecked = false
       this.resultFileName = ''
       this.mergeStats = null
       this.mergeWarnings = []
@@ -315,7 +291,6 @@ export default {
       this.progressPercent = 0
       this.progressStatus = ''
       this.progressText = ''
-      this.$refs.uploadRules?.clearFiles()
       if (this.$refs.folderInput) this.$refs.folderInput.value = ''
     }
   }

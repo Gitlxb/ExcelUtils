@@ -2,9 +2,9 @@
   <el-card class="func-card">
     <div class="page-container">
     <div class="func-page-header">
-      <h2 class="func-page-title">代工费拆分（增强版）</h2>
+      <h2 class="func-page-title">工资表拆分（增强版）</h2>
       <p class="func-page-desc">
-        根据代工费发放记录表和对应的发放记录表，按收款人姓名拆分各供应商的打款金额。增强版：完整功能，含社保、公积金、总计行。
+        增强版：完整功能，含社保、公积金、总计行。
       </p>
     </div>
 
@@ -63,11 +63,11 @@
 
     <!-- 3. 选择拆分依据列 -->
     <div class="section">
-      <div class="section-title">3. 选择拆分依据列</div>
+      <div class="section-title">3. 选择拆分列</div>
       <div class="form-row">
         <el-select
           v-model="selectedHeader"
-          placeholder="请选择拆分依据列（第2行表头）"
+          placeholder="请选择拆分列（第2行表头）"
           style="width:320px"
           :disabled="!headerList.length"
         >
@@ -89,24 +89,24 @@
           @click="doSplit"
           :loading="loadingSplit"
           :disabled="!selectedHeader"
-        >按列直接拆分</el-button>
+        >直接拆分</el-button>
         <el-button
           type="warning"
           @click="openCombineDialog"
           :disabled="!selectedHeader"
           :loading="loadingValues || loadingCombine"
-        >选择拆分</el-button>
+        >组合拆分</el-button>
       </div>
       <div v-if="groupList.length" class="group-summary">
         已设置 <strong>{{ groupList.length }}</strong> 个分组，共覆盖 <strong>{{ groupedValueCount }}</strong> 个值
       </div>
-      <div v-if="!selectedHeader" class="hint-text">请先选择拆分依据列</div>
+      <div v-if="!selectedHeader" class="hint-text">请先选择拆分列</div>
     </div>
 
     <!-- 选择拆分弹窗 -->
     <el-dialog
       v-model="showCombineDialog"
-      title="选择拆分 — 自定义分组"
+      title="组合拆分 — 自定义分组"
       width="700px"
       top="8vh"
       :close-on-click-modal="false"
@@ -194,6 +194,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 import { UploadFilled } from '@element-plus/icons-vue'
 
 const API_BASE = '/api/hr/split-salary'
@@ -345,7 +346,7 @@ export default {
         const json = JSON.stringify(groupsArr)
         formData.append('groups', btoa(unescape(encodeURIComponent(json))))
       }
-      const res = await axios.post(API_BASE, formData)
+      const res = await postAsync(API_BASE, formData)
       if (res.data.success) {
         this.resultOk = true
         this.resultMsg = res.data.message || '工资表拆分完成'

@@ -5,12 +5,14 @@ import com.example.project.service.finance.jxkh.JxkhHbbgCustomMergeEngine;
 import com.example.project.service.finance.jxkh.JxkhHbbgService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -27,29 +29,50 @@ public class JxkhHbbgController extends FinanceBaseController {
     /**
      * POST /api/finance/jxkh/hbbg
      * 功能：合并表格（frame_hbbg.py）
+     * 异步化（多文件）：请求线程内固化文件列表，提交 taskId，后台线程池执行
      */
     @PostMapping("/jxkh/hbbg")
     public Map<String, Object> jxkhHbbg(
             @RequestParam("files") List<MultipartFile> files,
-            @RequestParam("targetCol") String targetCol) {
-        Map<String, Object> result = new HashMap<>();
+            @RequestParam("targetCol") String targetCol,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = jxkhHbbgService.processAndMerge(files, targetCol, uploadDir);
-            result.put("success", true);
-            result.put("message", "合并表格完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
+            List<MultipartFile> safe = pinAll(files);
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "jxkh/hbbg", "合并表格",
+                    files == null || files.isEmpty() ? null : files.get(0).getOriginalFilename(),
+                    () -> {
+                        File dir = new File(uploadDir);
+                        if (!dir.exists()) dir.mkdirs();
+                        String outputPath = jxkhHbbgService.processAndMerge(safe, targetCol, uploadDir);
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "合并表格完成");
+                        result.put("fileName", new File(outputPath).getName());
+                        return result;
+                    });
+        } catch (IOException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "文件读取失败：" + e.getMessage());
+            return err;
         }
-        return result;
+    }
+
+    /** 把 MultipartFile 列表固化为内存副本列表（异步线程安全） */
+    protected List<MultipartFile> pinAll(List<MultipartFile> files) throws IOException {
+        List<MultipartFile> out = new ArrayList<>();
+        if (files != null) {
+            for (MultipartFile f : files) {
+                if (f == null || f.isEmpty()) continue;
+                out.add(pin(f));
+            }
+        }
+        return out;
     }
 
     /**
      * POST /api/finance/jxkh/hbbg-generic
      * 功能：通用合并表格 — 原样堆叠，不填月份（对齐 hbbg_zhf.py 通用合并模式）
+     * 异步化（多文件）：提交即返回 taskId，后台线程池执行
      */
     @PostMapping("/jxkh/hbbg-generic")
     public Map<String, Object> jxkhHbbgGeneric(
@@ -57,33 +80,41 @@ public class JxkhHbbgController extends FinanceBaseController {
             @RequestParam(value = "gapRows", defaultValue = "0") int gapRows,
             @RequestParam(value = "keepHeaderFile", defaultValue = "") String keepHeaderFile,
             @RequestParam(value = "skipRows", defaultValue = "1") int skipRows,
-            @RequestParam(value = "shiftRules", defaultValue = "") String shiftRulesJson) {
-        Map<String, Object> result = new HashMap<>();
+            @RequestParam(value = "shiftRules", defaultValue = "") String shiftRulesJson,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            // 解析列移动规则
+            // shiftRules 解析失败则同步返回错误
             List<JxkhHbbgService.ShiftRule> shiftRules = new ArrayList<>();
             if (shiftRulesJson != null && !shiftRulesJson.isEmpty()) {
                 try {
                     shiftRules = parseShiftRules(shiftRulesJson);
                 } catch (Exception e) {
-                    result.put("success", false);
-                    result.put("message", "列移动规则解析失败：" + e.getMessage());
-                    return result;
+                    Map<String, Object> err = new HashMap<>();
+                    err.put("success", false);
+                    err.put("message", "列移动规则解析失败：" + e.getMessage());
+                    return err;
                 }
             }
-
-            String outputPath = jxkhHbbgService.genericMerge(files, uploadDir, gapRows, keepHeaderFile, skipRows, shiftRules);
-            result.put("success", true);
-            result.put("message", "通用合并完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "合并失败：" + e.getMessage());
+            final List<JxkhHbbgService.ShiftRule> rules = shiftRules;
+            List<MultipartFile> safe = pinAll(files);
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "jxkh/hbbg-generic", "通用合并表格",
+                    files == null || files.isEmpty() ? null : files.get(0).getOriginalFilename(),
+                    () -> {
+                        File dir = new File(uploadDir);
+                        if (!dir.exists()) dir.mkdirs();
+                        String outputPath = jxkhHbbgService.genericMerge(
+                                safe, uploadDir, gapRows, keepHeaderFile, skipRows, rules);
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "通用合并完成");
+                        result.put("fileName", new File(outputPath).getName());
+                        return result;
+                    });
+        } catch (IOException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "文件读取失败：" + e.getMessage());
+            return err;
         }
-        return result;
     }
 
     /**
@@ -112,6 +143,7 @@ public class JxkhHbbgController extends FinanceBaseController {
     /**
      * POST /api/finance/jxkh/hbbg-custom
      * 功能：多表合并（删列+公司命名），纯数据输出
+     * 异步化（多文件）：提交即返回 taskId，后台线程池执行
      */
     @PostMapping("/jxkh/hbbg-custom")
     public Map<String, Object> jxkhHbbgCustom(
@@ -119,30 +151,39 @@ public class JxkhHbbgController extends FinanceBaseController {
             @RequestParam("sheetSelections") String sheetSelectionsJson,
             @RequestParam("deleteColLetter") String deleteColLetter,
             @RequestParam("sheetNameColLetter") String sheetNameColLetter,
-            @RequestParam(value = "headerRows", defaultValue = "5") int headerRows) {
-        Map<String, Object> result = new HashMap<>();
+            @RequestParam(value = "headerRows", defaultValue = "5") int headerRows,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            // 解析 sheetSelections JSON
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             List<JxkhHbbgCustomMergeEngine.SheetSelection> selections = mapper.readValue(
                 sheetSelectionsJson,
                 new com.fasterxml.jackson.core.type.TypeReference<List<JxkhHbbgCustomMergeEngine.SheetSelection>>() {}
             );
-
-            String outputPath = jxkhHbbgService.customMerge(
-                files, selections, deleteColLetter, sheetNameColLetter, headerRows, uploadDir
-            );
-            result.put("success", true);
-            result.put("message", "多表合并完成");
-            result.put("fileName", new File(outputPath).getName());
+            List<MultipartFile> safe = pinAll(files);
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "jxkh/hbbg-custom", "多表合并",
+                    files == null || files.isEmpty() ? null : files.get(0).getOriginalFilename(),
+                    () -> {
+                        File dir = new File(uploadDir);
+                        if (!dir.exists()) dir.mkdirs();
+                        String outputPath = jxkhHbbgService.customMerge(
+                            safe, selections, deleteColLetter, sheetNameColLetter, headerRows, uploadDir
+                        );
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "多表合并完成");
+                        result.put("fileName", new File(outputPath).getName());
+                        return result;
+                    });
+        } catch (IOException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "文件读取失败：" + e.getMessage());
+            return err;
         } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "合并失败：" + e.getMessage());
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "合并失败：" + e.getMessage());
+            return err;
         }
-        return result;
     }
 
     /**

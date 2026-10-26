@@ -157,6 +157,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../utils/asyncTask'
 import { ArrowDown, UploadFilled, Download } from '@element-plus/icons-vue'
 
 export default {
@@ -504,7 +505,7 @@ export default {
       if (this.selectedUnits.length > 0) formData.append('units', this.selectedUnits.join(','))
 
       try {
-        const res = await axios.post('/api/finance/yzpz/balance', formData)
+        const res = await postAsync('/api/finance/yzpz/balance', formData)
         if (res.data.success) {
           this.resultMsg = res.data.message || '平账完成'
           this.resultOk = true

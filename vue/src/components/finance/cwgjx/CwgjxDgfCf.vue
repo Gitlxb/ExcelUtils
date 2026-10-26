@@ -100,6 +100,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'CwgjxDgfCf',
@@ -194,7 +195,7 @@ export default {
 
       this.loading = true
       this.message = ''
-      axios.post('/api/finance/toolbox/labor-split-batch', formData).then(res => {
+      postAsync('/api/finance/toolbox/labor-split-batch', formData).then(res => {
         if (res.data.success) {
           this.addLaborLog('  批量处理完成，共处理 ' + this.formLabor.files1.length + ' 个文件')
           this.addLaborLog('  汇总记录总数：' + (res.data.summaryCount || '未知'))

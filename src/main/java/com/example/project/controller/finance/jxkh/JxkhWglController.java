@@ -23,6 +23,7 @@ public class JxkhWglController extends FinanceBaseController {
     /**
      * POST /api/finance/jxkh/wgl
      * 功能：稳岗率分析（cw_wgl_zhf.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/jxkh/wgl")
     public Map<String, Object> jxkhWgl(
@@ -30,21 +31,19 @@ public class JxkhWglController extends FinanceBaseController {
             @RequestParam(value = "sheetName", required = false) String sheetName,
             @RequestParam("startMonth") String startMonth,
             @RequestParam("endMonth") String endMonth,
-            @RequestParam(value = "copyOriginal", defaultValue = "true") boolean copyOriginal) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            JxkhWglService.AnalyzeResult ar = jxkhWglService.analyze(
-                    file, sheetName, startMonth, endMonth, copyOriginal, uploadDir);
-            result.put("success", true);
-            result.put("message", "稳岗率分析完成");
-            result.put("fileName", new File(ar.filePath).getName());
-            result.put("logs", ar.logs);
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "copyOriginal", defaultValue = "true") boolean copyOriginal,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "jxkh/wgl", "稳岗率分析",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    JxkhWglService.AnalyzeResult ar = jxkhWglService.analyze(
+                            safeFile, sheetName, startMonth, endMonth, copyOriginal, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "稳岗率分析完成");
+                    result.put("fileName", new File(ar.filePath).getName());
+                    result.put("logs", ar.logs);
+                    return result;
+                });
     }
 }

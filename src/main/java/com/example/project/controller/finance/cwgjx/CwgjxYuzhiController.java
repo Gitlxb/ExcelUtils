@@ -23,21 +23,20 @@ public class CwgjxYuzhiController extends FinanceBaseController {
     /**
      * POST /api/finance/toolbox/fee-split
      * 功能：预支处理（yuzhi_frame.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/toolbox/fee-split")
-    public Map<String, Object> toolboxFeeSplit(@RequestParam("file") MultipartFile file) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = cwgjxYuzhiService.process(file, uploadDir);
-            result.put("success", true);
-            result.put("message", "预支处理完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+    public Map<String, Object> toolboxFeeSplit(@RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "toolbox/fee-split", "预支处理",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = cwgjxYuzhiService.process(safeFile, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "预支处理完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 }

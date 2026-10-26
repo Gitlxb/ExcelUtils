@@ -143,6 +143,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 import { UploadFilled, FolderOpened } from '@element-plus/icons-vue'
 
 export default {
@@ -318,7 +319,7 @@ export default {
       fd.append('categoriesJson', JSON.stringify(payload))
       this.candidateFiles.forEach(f => fd.append('files', f))
       try {
-        const res = await axios.post('/api/hr/word-merge', fd)
+        const res = await postAsync('/api/hr/word-merge', fd)
         if (res.data.success) {
           this.downloadFileName = res.data.fileName
           this.log('✓ 合并完成 → ' + this.downloadFileName)

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Excel 自动处理工具（excel_app） - 日志配置（Spring Boot 自动加载 classpath:logback-spring.xml）。
+
+  设计目标（2026-10-07，对齐锦途反馈系统后端同款方案）：
+  1. 每日滚动落盘到 ${LOG_PATH}/excel-app.%d{yyyy-MM-dd}.%i.log，便于按日期检索；
+  2. 同时保留 Console 输出 —— docker logs -f excel_app 仍可用，不破坏现有排障习惯；
+  3. 文件日志 UTF-8（中文日志不乱码）；
+  4. 容量护栏：maxHistory=30（保留 30 天）+ totalSizeCap=1GB + 单文件 50MB；
+  5. 落盘目录可用 logging.file.path（或环境变量 LOGGING_FILE_PATH）覆盖，默认 /app/logs
+     （与 docker-compose 挂载 /opt/excel-processor/logs:/app/logs 对应）。
+
+  本地开发提示（Windows）：
+  - 控制台中文乱码时，启动加 -Dlogging.charset.console=GBK；
+  - 不想落在 C:\app\logs 时，启动加 -Dlogging.file.path=./logs。
+-->
+<configuration>
+    <!-- 落盘目录：可用 logging.file.path 覆盖，默认 /app/logs（容器内） -->
+    <springProperty name="LOG_PATH" source="logging.file.path" defaultValue="/app/logs"/>
+    <!-- 日志文件前缀 -->
+    <property name="LOG_FILE_PREFIX" value="excel-app"/>
+    <!-- 单文件容量上限（滚动后累计），超过触发清理最旧文件 -->
+    <property name="TOTAL_SIZE_CAP" value="1GB"/>
+    <!-- 保留天数 -->
+    <property name="MAX_HISTORY" value="30"/>
+    <!-- 控制台编码：可用 logging.charset.console 覆盖（如本地 Windows GBK 控制台设 GBK）；
+         默认 UTF-8（适合容器 docker logs / Linux）。文件日志始终 UTF-8，不受此项影响。 -->
+    <springProperty name="CONSOLE_CHARSET" source="logging.charset.console" defaultValue="UTF-8"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>${CONSOLE_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${LOG_FILE_PREFIX}.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 每日滚动 + 体积上限双保险：文件名带日期，跨天自动切新文件 -->
+            <fileNamePattern>${LOG_PATH}/${LOG_FILE_PREFIX}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+            <maxFileSize>50MB</maxFileSize>
+        </rollingPolicy>
+    </appender>
+
+    <!-- 单独的错误文件，便于快速 grep ERROR（不强制依赖） -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <file>${LOG_PATH}/${LOG_FILE_PREFIX}-error.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${LOG_FILE_PREFIX}-error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+            <maxFileSize>50MB</maxFileSize>
+        </rollingPolicy>
+    </appender>
+
+    <!-- 根日志：INFO 及以上同时进 Console 与每日文件；ERROR 额外进错误文件 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+</configuration>

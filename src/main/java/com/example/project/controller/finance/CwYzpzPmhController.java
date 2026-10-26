@@ -1,8 +1,10 @@
 package com.example.project.controller.finance;
 
 import com.example.project.service.finance.CwYzpzPmhService;
+import com.example.project.task.MemoryMultipartFile;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,25 +27,24 @@ public class CwYzpzPmhController extends FinanceBaseController {
     /**
      * POST /api/finance/yzpz/prepare
      * 功能：预支平账-准备阶段（cw_yzpz_pmh.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/yzpz/prepare")
     public Map<String, Object> yzpzPrepare(
             @RequestParam("file") MultipartFile file,
             @RequestParam("sheet") String sheet,
-            @RequestParam(value = "round", defaultValue = "1") int round) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = cwYzpzPmhService.prepare(file, sheet, round, uploadDir);
-            result.put("success", true);
-            result.put("message", "准备完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "准备失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "round", defaultValue = "1") int round,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "yzpz/prepare", "预支平账准备",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = cwYzpzPmhService.prepare(safeFile, sheet, round, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "准备完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 
     /**
@@ -96,6 +97,7 @@ public class CwYzpzPmhController extends FinanceBaseController {
     /**
      * POST /api/finance/yzpz/process-deduction
      * 功能：预支平账-处理扣款数据
+     * 异步化（双文件）：提交即返回 taskId，后台线程池执行
      */
     @PostMapping("/yzpz/process-deduction")
     public Map<String, Object> yzpzProcessDeduction(
@@ -103,25 +105,35 @@ public class CwYzpzPmhController extends FinanceBaseController {
             @RequestParam("dedFile") MultipartFile dedFile,
             @RequestParam("dedSheet") String dedSheet,
             @RequestParam(value = "columnType", required = false) String columnType,
-            @RequestParam(value = "round", defaultValue = "1") int round) {
-        Map<String, Object> result = new HashMap<>();
+            @RequestParam(value = "round", defaultValue = "1") int round,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = cwYzpzPmhService.processDeduction(file, dedFile, dedSheet, columnType, round, uploadDir);
-            result.put("success", true);
-            result.put("message", "扣款数据处理完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
+            MemoryMultipartFile safeFile = pin(file);
+            MemoryMultipartFile safeDed = pin(dedFile);
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "yzpz/process-deduction", "预支扣款处理",
+                    file.getOriginalFilename(),
+                    () -> {
+                        File dir = new File(uploadDir);
+                        if (!dir.exists()) dir.mkdirs();
+                        String outputPath = cwYzpzPmhService.processDeduction(
+                                safeFile, safeDed, dedSheet, columnType, round, uploadDir);
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "扣款数据处理完成");
+                        result.put("fileName", new File(outputPath).getName());
+                        return result;
+                    });
+        } catch (IOException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "文件读取失败：" + e.getMessage());
+            return err;
         }
-        return result;
     }
 
     /**
      * POST /api/finance/yzpz/balance
      * 功能：预支平账-执行平账
+     * 异步化：提交即返回 taskId，后台线程池执行
      */
     @PostMapping("/yzpz/balance")
     public Map<String, Object> yzpzBalance(
@@ -129,20 +141,18 @@ public class CwYzpzPmhController extends FinanceBaseController {
             @RequestParam("salarySheet") String salarySheet,
             @RequestParam("month") String month,
             @RequestParam(value = "round", defaultValue = "1") int round,
-            @RequestParam(value = "units", required = false) String units) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = cwYzpzPmhService.balance(file, salarySheet, month, round, units, uploadDir);
-            result.put("success", true);
-            result.put("message", "平账完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "平账失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "units", required = false) String units,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "yzpz/balance", "预支平账执行",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = cwYzpzPmhService.balance(safeFile, salarySheet, month, round, units, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "平账完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 
     /**

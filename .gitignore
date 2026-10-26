@@ -38,3 +38,19 @@ src/main/resources/static/css/
 src/main/resources/static/img/
 src/main/resources/static/index.html
 src/main/resources/static/logo.png
+
+### 前端依赖与中间构建目录（2026-10-26 新增：node_modules 实测 242MB）###
+vue/node_modules/
+vue/dist/
+
+### 本地运行产物 / 用户上传数据（2026-10-26 新增）###
+uploads/
+logs/
+*.log
+
+### 工作区本地数据（AI 记忆、任务缓存等，不入库）###
+.workbuddy/
+
+### 部署编排文件（含服务器路径与内网名，只在服务器维护，不入库）###
+docker-compose.yml
+docker-compose.*.yml

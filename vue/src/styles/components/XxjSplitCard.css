@@ -1,0 +1,376 @@
+/* ==========================================================================
+   孝心金拆分页面样式（独立自包含，不引用其它样式文件）
+   类名统一前缀 xxj-，避免与项目内其它页面样式相互影响
+   ========================================================================== */
+
+.xxj-page {
+  width: 100%;
+}
+
+.xxj-card {
+  margin-bottom: 20px;
+}
+
+/* ---------------------------------------------------------------- 页头 */
+.xxj-header {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #eafaf6 0%, #eef7ff 100%);
+  border-radius: 8px;
+  border-left: 4px solid #16a085;
+}
+
+.xxj-header-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.xxj-header-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------ 步骤区块 */
+.xxj-section {
+  position: relative;
+  padding: 18px 0;
+  border-bottom: 1px dashed #e4e7ed;
+}
+
+.xxj-section:last-child {
+  border-bottom: none;
+}
+
+.xxj-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 14px;
+}
+
+.xxj-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  background: #16a085;
+  border-radius: 2px;
+}
+
+/* -------------------------------------------------------------- 上传区 */
+.xxj-upload {
+  width: 100%;
+}
+
+.xxj-upload :deep(.el-upload-dragger) {
+  width: 100%;
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  background: #fafafa;
+  transition: all 0.25s;
+}
+
+.xxj-upload :deep(.el-upload-dragger:hover) {
+  border-color: #16a085;
+  background: #f2fbf9;
+}
+
+.xxj-upload :deep(.el-icon--upload) {
+  font-size: 44px;
+  color: #c0c4cc;
+  transition: color 0.25s;
+}
+
+.xxj-upload :deep(.el-upload-dragger:hover .el-icon--upload) {
+  color: #16a085;
+}
+
+.xxj-upload :deep(.el-upload__text) {
+  color: #606266;
+  font-size: 14px;
+}
+
+.xxj-upload :deep(.el-upload__text em) {
+  color: #16a085;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.xxj-upload :deep(.el-upload__tip) {
+  color: #909399;
+  font-size: 12px;
+}
+
+.xxj-file-name {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border-left: 3px solid #409eff;
+  border-radius: 4px;
+  color: #409eff;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+/* -------------------------------------------------------------- 表单行 */
+.xxj-form-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ---------------------------------------------------------------- 提示 */
+.xxj-hint {
+  font-size: 13px;
+  color: #c0c4cc;
+  margin-top: 6px;
+}
+
+.xxj-preview-hint {
+  font-size: 13px;
+  color: #909399;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.xxj-preview-hint strong {
+  color: #16a085;
+  font-size: 15px;
+}
+
+/* ---------------------------------------------------------- 分组预览表 */
+.xxj-table-wrap {
+  margin-top: 4px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.xxj-table-wrap :deep(.el-table) {
+  font-size: 13px;
+}
+
+.xxj-table-wrap :deep(.el-table th.el-table__cell) {
+  background: #f5f7fa;
+  color: #303133;
+  font-weight: 600;
+}
+
+.xxj-table-wrap :deep(.el-table .el-table__cell) {
+  padding: 6px 0;
+}
+
+.xxj-table-wrap :deep(.el-table .cell) {
+  padding: 0 10px;
+}
+
+.xxj-amount {
+  font-variant-numeric: tabular-nums;
+  color: #303133;
+}
+
+/* ------------------------------------------------ 按钮主色（青绿主题） */
+.xxj-card :deep(.el-button--primary),
+.xxj-dialog :deep(.el-button--primary) {
+  background-color: #16a085;
+  border-color: #16a085;
+}
+
+.xxj-card :deep(.el-button--primary:hover),
+.xxj-card :deep(.el-button--primary:focus),
+.xxj-dialog :deep(.el-button--primary:hover),
+.xxj-dialog :deep(.el-button--primary:focus) {
+  background-color: #1abc9c;
+  border-color: #1abc9c;
+}
+
+.xxj-card :deep(.el-button--primary.is-disabled),
+.xxj-card :deep(.el-button--primary.is-disabled:hover),
+.xxj-dialog :deep(.el-button--primary.is-disabled),
+.xxj-dialog :deep(.el-button--primary.is-disabled:hover) {
+  background-color: #8fd6c8;
+  border-color: #8fd6c8;
+}
+
+/* -------------------------------------------------------------- 结果区 */
+.xxj-result {
+  margin-top: 8px;
+  padding: 18px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #eefaf6 100%);
+  border: 1px solid #dcefe9;
+}
+
+.xxj-result :deep(.el-alert) {
+  border-radius: 6px;
+}
+
+.xxj-download-area {
+  margin-top: 14px;
+}
+
+.xxj-download-area :deep(.el-button--primary) {
+  background-color: #27ae60;
+  border-color: #27ae60;
+  padding: 10px 22px;
+  font-size: 14px;
+}
+
+.xxj-download-area :deep(.el-button--primary:hover) {
+  background-color: #2ecc71;
+  border-color: #2ecc71;
+}
+
+/* ------------------------------------------------------ 组合拆分弹窗 */
+.xxj-combine-body {
+  display: flex;
+  gap: 16px;
+  min-height: 340px;
+  max-height: 52vh;
+}
+
+.xxj-combine-left,
+.xxj-combine-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.xxj-combine-left {
+  border-right: 1px solid #e4e7ed;
+  padding-right: 12px;
+}
+
+.xxj-combine-right {
+  padding-left: 12px;
+}
+
+.xxj-combine-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.xxj-combine-count {
+  font-weight: 400;
+  color: #909399;
+  font-size: 12px;
+}
+
+.xxj-combine-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #fafafa;
+}
+
+.xxj-combine-checkbox {
+  display: flex;
+  margin-bottom: 2px;
+  height: 30px;
+}
+
+.xxj-combine-checkbox :deep(.el-checkbox__label) {
+  font-size: 13px;
+  color: #303133;
+}
+
+.xxj-combine-group-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  padding: 10px;
+  background: #fafafa;
+}
+
+.xxj-combine-group-item {
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid #a8ddd0;
+  border-radius: 6px;
+  background: #f2fbf9;
+}
+
+.xxj-combine-group-item:last-child {
+  margin-bottom: 0;
+}
+
+.xxj-combine-empty {
+  padding: 20px;
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 13px;
+}
+
+.xxj-group-summary {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #16a085;
+}
+
+.xxj-group-summary strong {
+  color: #303133;
+}
+
+/* -------------------------------------------------------------- 工具类 */
+.xxj-mt-8-full {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.xxj-mt-12 {
+  margin-top: 12px;
+}
+
+.xxj-group-tag {
+  margin: 2px 4px 2px 0;
+}
+
+.xxj-group-del {
+  margin-left: auto;
+}
+
+/* -------------------------------------------------------------- 响应式 */
+@media (max-width: 768px) {
+  .xxj-form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .xxj-form-row :deep(.el-select) {
+    width: 100% !important;
+  }
+
+  .xxj-combine-body {
+    flex-direction: column;
+    max-height: 60vh;
+  }
+
+  .xxj-combine-left {
+    border-right: none;
+    border-bottom: 1px solid #e4e7ed;
+    padding-right: 0;
+    padding-bottom: 12px;
+  }
+
+  .xxj-combine-right {
+    padding-left: 0;
+  }
+}

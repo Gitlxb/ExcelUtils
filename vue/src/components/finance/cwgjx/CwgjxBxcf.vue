@@ -61,6 +61,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'CwgjxBxcf',
@@ -123,7 +124,7 @@ export default {
       formData.append('splitColumn', this.formExpense.splitColumn)
       this.loading = true
       this.message = ''
-      axios.post('/api/finance/toolbox/expense-split', formData).then(res => {
+      postAsync('/api/finance/toolbox/expense-split', formData).then(res => {
         if (res.data.success) {
           this.showMessage(res.data.message, 'success')
           this.expenseDownloadName = res.data.fileName

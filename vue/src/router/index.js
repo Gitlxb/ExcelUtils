@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomePage from '../components/HomePage.vue'
 
 // ===== General =====
 import CfBiaogeLi from '../components/general/CfBiaogeLi.vue'
@@ -38,11 +37,13 @@ import JxkhTenure from '../components/finance/jxkh/JxkhTenure.vue'
 import CfDuogeWenjZz from '../components/hr/CfDuogeWenjZz.vue'
 import CfZdnrfyqNrcsWsx from '../components/hr/CfZdnrfyqNrcsWsx.vue'
 import HrGzbcfSplit from '../components/hr/hyp/HrGzbcfSplit.vue'
+import CfXxjHyp from '../components/hr/hyp/CfXxjHyp.vue'
 import HrWordMerge from '../components/hr/hyp/HrWordMerge.vue'
 import HrGzbPipei from '../components/hr/HrGzbPipei.vue'
 
 const routes = [
-  { path: '/', name: 'home', component: HomePage },
+  // 主页（企业宣传页）已移除；根路径直接进入"拆成多个工作表"
+  { path: '/', redirect: '/general/split-sheets' },
 
   // ===== 通用功能 =====
   { path: '/general/split-sheets', name: 'general-split-sheets', component: CfBiaogeLi },
@@ -77,6 +78,7 @@ const routes = [
   { path: '/hr/split-files', name: 'hr-split-files', component: CfDuogeWenjZz },
   { path: '/hr/split-config', name: 'hr-split-config', component: CfZdnrfyqNrcsWsx },
   { path: '/hr/gzbcf-split', name: 'hr-gzbcf-split', component: HrGzbcfSplit },
+  { path: '/hr/xxj-split', name: 'hr-xxj-split', component: CfXxjHyp },
   { path: '/hr/word-merge', name: 'hr-word-merge', component: HrWordMerge },
   { path: '/hr/gzb-pipei', name: 'hr-gzb-pipei', component: HrGzbPipei },
 ]

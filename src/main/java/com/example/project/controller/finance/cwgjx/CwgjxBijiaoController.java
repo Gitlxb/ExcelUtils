@@ -2,11 +2,13 @@ package com.example.project.controller.finance.cwgjx;
 
 import com.example.project.controller.finance.FinanceBaseController;
 import com.example.project.service.finance.cwgjx.CwgjxBijiaoService;
+import com.example.project.task.MemoryMultipartFile;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,6 +25,7 @@ public class CwgjxBijiaoController extends FinanceBaseController {
     /**
      * POST /api/finance/toolbox/data-compare
      * 功能：数据比较（cw_bijiao_xzy.py）
+     * 异步化（双文件）：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/toolbox/data-compare")
     public Map<String, Object> toolboxDataCompare(
@@ -31,23 +34,30 @@ public class CwgjxBijiaoController extends FinanceBaseController {
             @RequestParam("sheet1Name") String sheet1Name,
             @RequestParam("sheet2Name") String sheet2Name,
             @RequestParam("startDate") String startDate,
-            @RequestParam("endDate") String endDate) {
-        Map<String, Object> result = new HashMap<>();
+            @RequestParam("endDate") String endDate,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            CwgjxBijiaoService.CompareResult compareResult = cwgjxBijiaoService.compare(
-                    file1, sheet1Name, file2, sheet2Name, startDate, endDate, uploadDir);
-            result.put("success", true);
-            result.put("message", "数据比较完成");
-            result.put("fileName", compareResult.fileName);
-            CwgjxBijiaoService.ComparePreview preview = compareResult.preview;
-            result.put("preview", preview);
-            result.put("previewRows", compareResult.previewRows);
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
+            MemoryMultipartFile f1 = pin(file1);
+            MemoryMultipartFile f2 = pin(file2);
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "toolbox/data-compare", "数据比较",
+                    file1.getOriginalFilename(),
+                    () -> {
+                        File dir = new File(uploadDir);
+                        if (!dir.exists()) dir.mkdirs();
+                        CwgjxBijiaoService.CompareResult compareResult = cwgjxBijiaoService.compare(
+                                f1, sheet1Name, f2, sheet2Name, startDate, endDate, uploadDir);
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "数据比较完成");
+                        result.put("fileName", compareResult.fileName);
+                        result.put("preview", compareResult.preview);
+                        result.put("previewRows", compareResult.previewRows);
+                        return result;
+                    });
+        } catch (IOException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "文件读取失败：" + e.getMessage());
+            return err;
         }
-        return result;
     }
 }

@@ -233,6 +233,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'HsHuizongCxm',
@@ -388,7 +389,7 @@ export default {
         formData.append('types', this.selectedTypes.join(','))
         formData.append('months', this.selectedMonths.join(','))
         formData.append('amountCol', this.selectedAmountColIdx)
-        const res = await axios.post('/api/finance/summary/batch', formData)
+        const res = await postAsync('/api/finance/summary/batch', formData)
         if (res.data.success) {
           this.summaryFileName = res.data.fileName
           this.downloadFileName = res.data.fileName
@@ -477,7 +478,7 @@ export default {
         formData.append('checkSheet', this.checkSheet)
         formData.append('selectedMonth', this.checkSelectedMonth)
         formData.append('selectedPersons', this.checkSelectedPersons.join(','))
-        const res = await axios.post('/api/finance/summary/check', formData)
+        const res = await postAsync('/api/finance/summary/check', formData)
         if (res.data.success) {
           this.checkFileName = res.data.fileName
           this.downloadFileName = res.data.fileName
@@ -509,7 +510,7 @@ export default {
         if (this.summaryFileName) formData.append('summaryFileName', this.summaryFileName)
         if (this.checkFileName) formData.append('checkFileName', this.checkFileName)
         formData.append('targetFile', this.targetFile)
-        const res = await axios.post('/api/finance/summary/append', formData)
+        const res = await postAsync('/api/finance/summary/append', formData)
         if (res.data.success) {
           this.appendFileName = res.data.fileName
           this.downloadFileName = res.data.fileName

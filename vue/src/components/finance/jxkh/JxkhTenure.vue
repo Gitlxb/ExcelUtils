@@ -30,32 +30,32 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="截止年月份">
+        <el-form-item label="起始日期">
           <el-config-provider :locale="customLocale">
             <el-date-picker
-              v-model="formTenure.statMonth"
-              type="month"
-              format="YYYY-MM"
-              value-format="YYYY-MM"
-              placeholder="选择统计截止月份"
-              style="width: 220px"
-            />
-          </el-config-provider>
-        </el-form-item>
-
-        <el-form-item label="在职截止日">
-          <el-config-provider :locale="customLocale">
-            <el-date-picker
-              v-model="formTenure.asOfDate"
+              v-model="formTenure.startDate"
               type="date"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
-              placeholder="留空表示今天"
+              placeholder="如 2026-07-01"
               style="width: 220px"
               clearable
             />
           </el-config-provider>
-          <span class="form-hint">默认今天（决定在职天数截到哪天）</span>
+        </el-form-item>
+
+        <el-form-item label="截止日期">
+          <el-config-provider :locale="customLocale">
+            <el-date-picker
+              v-model="formTenure.endDate"
+              type="date"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              placeholder="如 2026-07-31"
+              style="width: 220px"
+              clearable
+            />
+          </el-config-provider>
         </el-form-item>
 
         <el-form-item label="合并总在职天数">
@@ -103,6 +103,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 const customLocale = {
@@ -136,7 +137,14 @@ const customLocale = {
 function currentYearMonth() {
   const d = new Date()
   const m = String(d.getMonth() + 1).padStart(2, '0')
-  return d.getFullYear() + '-' + m
+  return d.getFullYear() + '-' + m + '-01'
+}
+
+function currentMonthEnd() {
+  const d = new Date()
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  return d.getFullYear() + '-' + m + '-' + String(lastDay).padStart(2, '0')
 }
 
 export default {
@@ -153,9 +161,9 @@ export default {
       customLocale: customLocale,
       formTenure: {
         sheetName: '',
-        statMonth: currentYearMonth(),
-        asOfDate: '',
-        mergeTotalDays: true
+        startDate: currentYearMonth(),
+        endDate: currentMonthEnd(),
+        mergeTotalDays: false
       }
     }
   },
@@ -193,16 +201,24 @@ export default {
         this.showMessage('请选择Excel文件', 'warning')
         return
       }
-      if (!this.formTenure.statMonth) {
-        this.showMessage('请选择截止年月份', 'warning')
+      if (!this.formTenure.startDate) {
+        this.showMessage('请选择起始日期', 'warning')
+        return
+      }
+      if (!this.formTenure.endDate) {
+        this.showMessage('请选择截止日期', 'warning')
+        return
+      }
+      if (this.formTenure.startDate > this.formTenure.endDate) {
+        this.showMessage('起始日期不能晚于截止日期', 'warning')
         return
       }
       this.tenureLogs = []
       const formData = new FormData()
       formData.append('file', this.tenureFile)
       if (this.formTenure.sheetName) formData.append('sheetName', this.formTenure.sheetName)
-      formData.append('statMonth', this.formTenure.statMonth)
-      if (this.formTenure.asOfDate) formData.append('asOfDate', this.formTenure.asOfDate)
+      formData.append('startDate', this.formTenure.startDate)
+      formData.append('endDate', this.formTenure.endDate)
       formData.append('mergeTotalDays', this.formTenure.mergeTotalDays)
       this.post('/api/finance/jxkh/tenure', formData, (res) => {
         if (res.data.logs && res.data.logs.length) {
@@ -214,7 +230,7 @@ export default {
       this.loading = true
       this.message = ''
       this.downloadFileName = ''
-      axios.post(endpoint, formData).then(res => {
+      postAsync(endpoint, formData).then(res => {
         if (res.data.success) {
           this.showMessage(res.data.message, 'success')
           this.downloadFileName = res.data.fileName

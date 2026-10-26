@@ -14,15 +14,20 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 对应 Python: hbgs_core.py
+ * 合并个税：对应 Python hbgs_core.py / VBA「合并个税_修复版.vba」
  * 功能：合并个税统计表，按手续费规则计算银行手续费
  *
- * 核心流程（与 Python run_merge_collect 完全等价）：
- * 1. 加载手续费规则表（load_fee_rules）
- * 2. 扫描所有Excel文件（scan_excel_files）
- * 3. 逐个读取「个税统计」表 + 「员工信息-X月」表（_read_payroll_file）
+ * 核心流程：
+ * 1. 加载手续费规则表（目录内「收取手续费银行信息.xlsx」）
+ * 2. 逐个读取「个税统计」表 + 「员工信息-X月」表
+ * 3. 按 19 列白名单落位（别名归并 / 忽略名单 / 白名单外按邻列插入）
  * 4. 按规则逐行计算手续费（compute_fee_v2）
- * 5. 输出汇总表，身份证列文本化（write_merge_output）
+ * 5. 列尾压缩：「采用/不采用」跟随最后一个有效列
+ * 6. 输出汇总表，身份证列文本化（write_merge_output）
+ *
+ * 2026-10-26 改造（对齐 VBA「按列名映射重写版」）：
+ *   原实现为「首文件决定表头 + 按列名映射，多余列丢弃」，与 VBA 旧版同源；
+ *   现改为固定白名单 + 动态插列 + 尾部压缩，解决列数 15/16/17 混合批次的丢列问题。
  */
 @Service
 public class HbgsService {
@@ -30,7 +35,32 @@ public class HbgsService {
     private static final Logger log = LoggerFactory.getLogger(HbgsService.class);
 
     // ============================================================
-    // 手续费规则分类：A~M 各类精确匹配串（与 VBA 原值逐字一致，含全角标点）
+    // 输出列布局（2026-10-26 对齐 VBA「按列名映射重写版」）
+    //   原实现：首文件决定表头 + 按列名映射（多余列丢弃）—— 与 VBA 旧版同源
+    //   现实现：固定 19 列白名单 + 白名单外按邻列插入 + 忽略名单 + 尾部压缩
+    // ============================================================
+
+    /** 标准输出列白名单（顺序固定，对齐 VBA stdCols，共 19 列） */
+    private static final List<String> STD_COLUMNS = Collections.unmodifiableList(Arrays.asList(
+            "文件名", "项目", "姓名", "身份证", "入职时间", "离职时间", "应发工资", "个税",
+            "预支扣款", "需扣回", "实发工资", "备注", "发薪单位", "联系电话", "社保", "公积金",
+            "手续费", "个税申报所属期", "采用/不采用"));
+
+    /**
+     * 忽略名单：源表出现这些列名时整列跳过（不进汇总表、不占列位）
+     *   · 开户行   —— 手续费引擎从「员工信息-X月」表取，汇总表不需要
+     *   · 发放公司 —— 不输出，但 M 类双单位规则仍用它判定发薪单位（见 readPayrollFile 的 colPay）
+     *   · 电话号码 —— 与「联系电话」重复，只保留后者
+     */
+    private static final Set<String> IGNORE_COLUMNS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("开户行", "发放公司", "电话号码")));
+
+    /** 尾部压缩时必须保留的列（即使整列为空也不裁） */
+    private static final Set<String> KEEP_COLUMNS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("文件名", "项目", "姓名", "身份证", "手续费")));
+
+    // ============================================================
+    // 手续费规则分类：A~N 各类精确匹配串（与 VBA 原值逐字一致，含全角标点）
     // 对应 Python _RULE_SETS
     // ============================================================
 
@@ -68,6 +98,10 @@ public class HbgsService {
         RULE_SETS.put("M", new LinkedHashSet<>(Collections.singletonList(
                 "签浙江锦途：招商、建设不扣；签温州驰锦：民生不扣"
         )));
+        // N-全扣：所有银行都扣手续费（2026-10-26 补齐，此前缺失导致该规则的项目手续费留空）
+        RULE_SETS.put("N", new LinkedHashSet<>(Collections.singletonList(
+                "所有银行都扣手续费"
+        )));
     }
 
     // ============================================================
@@ -82,9 +116,11 @@ public class HbgsService {
         public int totalFiles;
         public int totalRows;
         public int skipped;
+        public int ruleCount;                // 规则表解析出的规则条数（0 = 无有效规则，调用方应直接失败）
         public List<String> errors;
         public Set<String> emptyKeywordOps;
         public Set<String> missingOps;
+        public Set<String> skippedColumns;   // 被忽略名单整列跳过的源列名（去重）
 
         public MergeResult() {
             this.header = null;
@@ -93,9 +129,11 @@ public class HbgsService {
             this.totalFiles = 0;
             this.totalRows = 0;
             this.skipped = 0;
+            this.ruleCount = 0;
             this.errors = new ArrayList<>();
             this.emptyKeywordOps = new LinkedHashSet<>();
             this.missingOps = new LinkedHashSet<>();
+            this.skippedColumns = new LinkedHashSet<>();
         }
     }
 
@@ -103,6 +141,7 @@ public class HbgsService {
     private static class PayrollData {
         List<Object> srcHeaders;
         List<List<Object>> srcRows;
+        int srcCols;      // 源表实际列数（最后含值的列）
         int colName;      // 1-based
         int colId;        // 1-based
         int colGjj;       // 1-based
@@ -240,6 +279,9 @@ public class HbgsService {
                 return b.contains("邮政") || b.contains("邮储") || b.contains("中信银行");
             case "L":
                 return b.contains("中信银行");
+            case "N":
+                // 全扣：所有银行都不免除（对齐 VBA IsBankExempt 的 Case "N"）
+                return false;
             default:
                 return false;
         }
@@ -624,17 +666,16 @@ public class HbgsService {
             int colName = 0, colId = 0, colGjj = 0, colPay = 0;
             for (int i = 0; i < Math.min(header.length, srcCols); i++) {
                 String ht = removeSpaces(header[i] != null ? header[i].toString() : "");
+                if (ht.isEmpty()) continue;
                 if ("姓名".equals(ht)) colName = i + 1;
                 else if ("身份证".equals(ht)) colId = i + 1;
                 else if ("公积金".equals(ht)) colGjj = i + 1;
-                else if ("发薪单位".equals(ht)) colPay = i + 1;
+                // 发薪单位：先别名归并（发薪公司→发薪单位），再兼容「发放公司」写法。
+                // 「发放公司」不进汇总表（忽略名单），但 M 类双单位规则仍需要它判定发薪单位。
+                else if (colPay == 0 && ("发薪单位".equals(aliasName(ht)) || "发放公司".equals(ht))) colPay = i + 1;
             }
 
-            // Python: if col_gjj == 0: raise ValueError("表头缺少「公积金」列")
-            if (colGjj == 0) {
-                throw new IllegalArgumentException("表头缺少「公积金」列");
-            }
-            // Python: if col_name == 0 or col_id == 0: raise ValueError(...)
+            // 2026-10-26：公积金列不再强制要求（对齐 VBA —— 缺列留空，不整簿跳过）
             if (colName == 0 || colId == 0) {
                 throw new IllegalArgumentException("表头缺少「姓名」或「身份证」列");
             }
@@ -647,18 +688,31 @@ public class HbgsService {
 
             // Python: src_rows = [] for r in rows[1:]: ...
             List<List<Object>> srcRows = new ArrayList<>();
+            int lastNonBlank = -1;
             for (int r = 1; r < rows.size(); r++) {
                 Object[] row = rows.get(r);
                 List<Object> rr = new ArrayList<>();
+                boolean blank = true;
                 for (int c = 0; c < srcCols; c++) {
-                    rr.add(c < row.length ? row[c] : null);
+                    Object v = c < row.length ? row[c] : null;
+                    rr.add(v);
+                    if (blank && v != null && !removeSpaces(v.toString().trim()).isEmpty()) {
+                        blank = false;
+                    }
                 }
                 srcRows.add(rr);
+                if (!blank) lastNonBlank = srcRows.size() - 1;
+            }
+            // 裁掉尾部「仅格式无值」的行（对应 VBA srcRows = SheetRow - 1），
+            // 否则这些行会以空白数据进入汇总并被标成「不采用」
+            if (lastNonBlank + 1 < srcRows.size()) {
+                srcRows = new ArrayList<>(srcRows.subList(0, lastNonBlank + 1));
             }
 
             PayrollData data = new PayrollData();
             data.srcHeaders = srcHeaders;
             data.srcRows = srcRows;
+            data.srcCols = srcCols;
             data.colName = colName;
             data.colId = colId;
             data.colGjj = colGjj;
@@ -770,8 +824,11 @@ public class HbgsService {
             onLog.accept("⚠ 读取规则表失败: " + e.getMessage());
             return result;
         }
+        result.ruleCount = feeRules.size();
         if (feeRules.isEmpty()) {
-            onLog.accept("⚠ 未加载到任何手续费规则, 手续费列将全部留空");
+            // 2026-10-26：规则表改为目录内唯一来源后，0 条规则即视为失败，不再产出"手续费整列留空"的表
+            onLog.accept("⚠ 规则表未解析出任何规则：请检查「运营项目」「扣费银行（多填）」两列是否存在，以及「客户状态」是否全部为「终止合作」");
+            return result;
         }
 
         // ---- 校验：规则表中"扣费银行（多填）"列是否为空（对应 Python gEmptyKeywordOps） ----
@@ -791,153 +848,159 @@ public class HbgsService {
         result.totalFiles = dataFiles.size();
         Set<String> missingOps = result.missingOps;
 
-        // ---- 首文件模板 + 按列名映射（对应 Python 同名逻辑） ----
-        // 输出表头完全由首个有效文件决定，后续文件按归一化列名做 name-based 映射
-        List<Object> templateHeaders = null;
-        int templateGjj = 0;
-        // 收集每个文件的数据（对应 Python file_data）
-        List<FileDataEntry> fileDataList = new ArrayList<>();
+        // ============================================================
+        // 输出列布局：固定 19 列白名单（对齐 VBA「按列名映射重写版」）
+        //   · 源簿缺列 → 该列留空，不影响其他文件
+        //   · 白名单外的列 → 按「左邻/右邻」插入输出表并写表头
+        //   · 忽略名单（开户行/发放公司/电话号码）→ 整列跳过
+        //   · 末尾做「尾部压缩」，「采用/不采用」跟随最后一个有效列
+        // ============================================================
+        List<String> uNames = new ArrayList<>(STD_COLUMNS);
+        Map<String, Integer> uDict = indexOfNames(uNames);
+        List<List<Object>> allRows = new ArrayList<>();
+        Set<String> skippedColumns = result.skippedColumns;
+        int uCount = uNames.size();
 
         for (int idx = 0; idx < dataFiles.size(); idx++) {
             File f = dataFiles.get(idx);
-            String fname = f.getName();
-            onLog.accept(String.format("读取中: %s (%d/%d)", fname, idx + 1, dataFiles.size()));
+            onLog.accept(String.format("读取中: %s (%d/%d)", f.getName(), idx + 1, dataFiles.size()));
 
+            PayrollData pd;
             try {
-                PayrollData data = readPayrollFile(f);
-                if (data == null) {
-                    String msg = "✗ " + fname + " 无「个税统计」表, 已跳过";
-                    onLog.accept(msg);
-                    result.errors.add(msg);
-                    result.skipped++;
-                    continue;
-                }
-                for (String w : data.warns) {
-                    onLog.accept(w);
-                }
-                if (!data.infoFound) {
-                    onLog.accept("⚠ " + fname + " 无员工信息表, 手续费将留空");
-                }
-
-                // 首个有效文件 → 锁定模板
-                if (templateHeaders == null) {
-                    templateHeaders = data.srcHeaders;
-                    templateGjj = data.colGjj;
-                }
-
-                fileDataList.add(new FileDataEntry(f, data));
-
+                pd = readPayrollFile(f);
             } catch (Exception e) {
-                String msg = "✗ 无法读取 " + fname + ": " + e.getMessage();
+                String msg = "✗ 无法读取 " + f.getName() + ": " + e.getMessage();
                 onLog.accept(msg);
                 result.errors.add(msg);
                 result.skipped++;
+                continue;
             }
-        }
-
-        if (fileDataList.isEmpty() || templateHeaders == null) {
-            onLog.accept("没有有效数据可汇总！");
-            return result;
-        }
-
-        // ---- 构建输出表头（与 Python 一致） ----
-        // 文件名/项目 + 首文件除第1列外的列（公积金后插手续费） + 采用/不采用
-        // 关键列 → 稳定 key：有列名用归一名，无列名用位置占位 __pos_N__
-        boolean feeHeaderInserted = false;
-        List<Object> outHeader = new ArrayList<>();
-        List<String> outKeys = new ArrayList<>();
-        outHeader.add("文件名");
-        outKeys.add("_fname");
-        outHeader.add("项目");
-        outKeys.add("_proj");
-
-        for (int i = 1; i < templateHeaders.size(); i++) {
-            outHeader.add(templateHeaders.get(i));
-            outKeys.add(colKey(templateHeaders.get(i), i));
-            if ("公积金".equals(removeSpaces(templateHeaders.get(i) != null ? templateHeaders.get(i).toString() : ""))
-                    && !feeHeaderInserted) {
-                outHeader.add("手续费");
-                outKeys.add("_fee");
-                feeHeaderInserted = true;
+            if (pd == null) {
+                String msg = "✗ " + f.getName() + " 无「个税统计」表, 已跳过";
+                onLog.accept(msg);
+                result.errors.add(msg);
+                result.skipped++;
+                continue;
             }
-        }
-        outHeader.add("采用/不采用");
-        outKeys.add("_tag");
+            for (String w : pd.warns) {
+                onLog.accept(w);
+            }
+            if (!pd.infoFound) {
+                onLog.accept("⚠ " + f.getName() + " 无员工信息表, 手续费将留空");
+            }
 
-        // 用归一名查找"姓名"/"身份证"在输出表头中的索引
-        Integer nameOutIdx = null;
-        Integer idOutIdx = null;
-        for (int i = 0; i < outHeader.size(); i++) {
-            String norm = removeSpaces(outHeader.get(i) != null ? outHeader.get(i).toString() : "");
-            if ("姓名".equals(norm)) nameOutIdx = i;
-            if ("身份证".equals(norm)) idOutIdx = i;
-        }
-        result.targetIdCol = idOutIdx != null ? idOutIdx + 1 : null;  // 1-based
+            int srcCols = pd.srcCols;
 
-        // ---- 逐文件映射数据（对应 Python for fd in file_data:） ----
-        List<List<Object>> allRows = new ArrayList<>();
+            // ---- ① 表头 → 本地列名：别名归并 + 生成列加「(源)」+ 同簿重名 #2 ----
+            String[] loc = new String[srcCols + 1];
+            Set<String> usedNames = new LinkedHashSet<>();
+            for (int s = 2; s <= srcCols; s++) {
+                String nm = localName(s - 1 < pd.srcHeaders.size() ? pd.srcHeaders.get(s - 1) : null);
+                if (!nm.isEmpty()) {
+                    if (usedNames.contains(nm)) {
+                        int c = 2;
+                        while (usedNames.contains(nm + "#" + c)) c++;
+                        nm = nm + "#" + c;
+                    }
+                    usedNames.add(nm);
+                }
+                loc[s] = nm;
+            }
 
-        for (FileDataEntry fd : fileDataList) {
-            String shortName = fd.file.getName();
-            // Python: fname = os.path.splitext(os.path.basename(fpath))[0]
+            // ---- ② 忽略名单 / 无表头告警 / 白名单外插列 ----
+            for (int s = 2; s <= srcCols; s++) {
+                String nm = loc[s];
+                if (nm.isEmpty()) {
+                    // 表头空但列下有值 → 该列数据会丢，明确告警
+                    if (columnHasData(pd.srcRows, s - 1)) {
+                        onLog.accept("⚠ " + f.getName() + "：第 " + s + " 列无表头，该列数据未汇总");
+                    }
+                    continue;
+                }
+                if (IGNORE_COLUMNS.contains(nm)) {
+                    skippedColumns.add(nm);
+                    continue;
+                }
+                if (uDict.containsKey(nm)) continue;
+
+                int pos = resolveInsertPos(loc, s, srcCols, uDict, uNames);
+                uNames.add(pos - 1, nm);
+                uDict = indexOfNames(uNames);
+                // 等价 VBA 的 gS2.Columns(pos).Insert：已汇总的行整体右移一格
+                for (List<Object> r : allRows) {
+                    r.add(pos - 1, null);
+                }
+                onLog.accept("⚠ " + f.getName() + "：新增列「" + nm + "」插入第 " + pos + " 列");
+            }
+
+            // ---- ③ 源列号 → 输出列号 ----
+            uCount = uNames.size();
+            int[] gIdx = new int[srcCols + 1];
+            for (int s = 2; s <= srcCols; s++) {
+                if (!loc[s].isEmpty()) {
+                    Integer gi = uDict.get(loc[s]);
+                    if (gi != null) gIdx[s] = gi;
+                }
+            }
+            int fIdx = uDict.get("文件名");
+            int pIdx = uDict.get("项目");
+            int idIdx = uDict.get("身份证");
+            int feeIdx = uDict.get("手续费");
+
+            String shortName = f.getName();
             int dotIdx = shortName.lastIndexOf('.');
             String fname = dotIdx > 0 ? shortName.substring(0, dotIdx) : shortName;
-            PayrollData pd = fd.data;
-            List<Object> srcHeaders = pd.srcHeaders;
-            List<List<Object>> srcRows = pd.srcRows;
-            int colName = pd.colName;
-            int colId = pd.colId;
-            int colPay = pd.colPay;
-            Map<String, List<Object[]>> infoLookup = pd.infoLookup;
 
-            // 本文件：稳定 key → 源行 0-based 索引
-            Map<String, Integer> srcKeyToIdx = new LinkedHashMap<>();
-            for (int i = 0; i < srcHeaders.size(); i++) {
-                srcKeyToIdx.put(colKey(srcHeaders.get(i), i), i);
-            }
-
-            for (List<Object> row : srcRows) {
-                // Python: proj = clean_project_name(row[0] if len(row) > 0 else None)
-                Object proj = row.size() > 0 ? cleanProjectName(row.get(0) != null ? row.get(0).toString() : null) : "";
-                List<Object> out = new ArrayList<>();
-                out.add(fname);
-                out.add(proj);
-                boolean feeComputed = false;
-
-                // 遍历除 文件名/项目(前2) 和 采用/不采用(末列) 外的输出列
-                for (int i = 2; i < outKeys.size() - 1; i++) {
-                    String key = outKeys.get(i);
-                    if ("_fee".equals(key)) {
-                        if (!feeComputed) {
-                            // 计算手续费
-                            Object nameV = (colName > 0 && colName - 1 < row.size()) ? row.get(colName - 1) : null;
-                            Object idV = (colId > 0 && colId - 1 < row.size()) ? row.get(colId - 1) : null;
-                            Object payV = (colPay > 0 && colPay - 1 < row.size()) ? row.get(colPay - 1) : null;
-                            Integer fee = computeFeeV2(nameV, idV, payV, infoLookup, feeRules, missingOps);
-                            out.add(fee);
-                            feeComputed = true;
-                        }
-                        continue;
+            // ---- ④ 逐行落位 ----
+            for (List<Object> row : pd.srcRows) {
+                List<Object> out = new ArrayList<>(Collections.nCopies(uCount, null));
+                out.set(fIdx - 1, fname);
+                Object projRaw = row.size() > 0 ? row.get(0) : null;
+                out.set(pIdx - 1, cleanProjectName(projRaw != null ? projRaw.toString() : null));
+                for (int s = 2; s <= srcCols && s - 1 < row.size(); s++) {
+                    if (gIdx[s] > 0) {
+                        out.set(gIdx[s] - 1, row.get(s - 1));
                     }
-                    Integer srcIdx = srcKeyToIdx.get(key);
-                    Object val = (srcIdx != null && srcIdx < row.size()) ? row.get(srcIdx) : null;
-                    out.add(val);
                 }
-
-                // 采用/不采用
-                Object nv = (nameOutIdx != null && nameOutIdx < out.size()) ? out.get(nameOutIdx) : null;
-                Object iv = (idOutIdx != null && idOutIdx < out.size()) ? out.get(idOutIdx) : null;
-                String tag = (isInvalidNameId(nv) || isInvalidNameId(iv)) ? "不采用" : "采用";
-                out.add(tag);
-
+                // 身份证文本化（防 18 位变科学计数法）
+                out.set(idIdx - 1, idText(out.get(idIdx - 1)));
+                // 手续费：引擎按「源表列号」取 姓名 / 身份证 / 发薪单位
+                out.set(feeIdx - 1, computeFeeV2(
+                        cell(row, pd.colName), cell(row, pd.colId), cell(row, pd.colPay),
+                        pd.infoLookup, feeRules, missingOps));
                 allRows.add(out);
             }
         }
 
-        result.header = outHeader;
+        if (allRows.isEmpty()) {
+            onLog.accept("没有有效数据可汇总！");
+            return result;
+        }
+
+        // ---- ⑤ 尾部压缩：「采用/不采用」跟随最后一个有效列 ----
+        int colsBefore = uNames.size();
+        compactTailColumns(uNames, allRows);
+        uDict = indexOfNames(uNames);
+        uCount = uNames.size();
+
+        // ---- ⑥ 写「采用/不采用」----
+        int tagIdx = uDict.get("采用/不采用");
+        int nameOutIdx = uDict.get("姓名");
+        int idOutIdx = uDict.get("身份证");
+        for (List<Object> r : allRows) {
+            Object nv = r.get(nameOutIdx - 1);
+            Object iv = r.get(idOutIdx - 1);
+            r.set(tagIdx - 1, (isInvalidNameId(nv) || isInvalidNameId(iv)) ? "不采用" : "采用");
+        }
+
+        result.header = new ArrayList<>(uNames);
         result.rows = allRows;
         result.totalRows = allRows.size();
-        onLog.accept("✔ 内存汇总完成: 共 " + allRows.size() + " 条数据");
+        result.targetIdCol = uDict.get("身份证");
+        onLog.accept("✔ 内存汇总完成: 共 " + allRows.size() + " 条数据, 输出 " + uCount + " 列");
+        if (colsBefore != uCount) {
+            onLog.accept("列尾压缩：删除尾部 " + (colsBefore - uCount) + " 个空列，「采用/不采用」位于第 " + tagIdx + " 列");
+        }
 
         // ---- 提示汇总①：规则表"扣费银行（多填）"列为空（对应 Python gEmptyKeywordOps） ----
         if (!emptyKeywordOps.isEmpty()) {
@@ -955,6 +1018,15 @@ public class HbgsService {
                 sb.append("[").append(o).append("] ");
             }
             onLog.accept("【项目提示】以下运营项目在规则表中找不到，请在\"收取银行手续费信息\"工作表中填写运营项目及文本关键词：" + sb.toString().trim());
+        }
+
+        // ---- 提示汇总③：被忽略名单整列跳过的源列（对应 VBA gSkippedCols） ----
+        if (!skippedColumns.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (String o : sortSet(skippedColumns)) {
+                sb.append("[").append(o).append("] ");
+            }
+            onLog.accept("【已跳过列】以下源表列按忽略名单整列跳过，未汇总到结果表：" + sb.toString().trim());
         }
 
         return result;
@@ -1005,13 +1077,147 @@ public class HbgsService {
         return v.toString();
     }
 
+    // ============================================================
+    // 列对齐 / 行落位辅助（对齐 VBA AliasName / LocalName / SyncUnion / CompactTailColumns）
+    // ============================================================
+
     /**
-     * 列名 → 稳定 key（与 Python _col_key 等价）
-     * 有列名用归一名，无列名（空白表头）用位置占位 __pos_N__
+     * 源表头 → 标准列名：别名归并（对齐 VBA AliasName）
+     *
+     * 注意：「发放公司」「电话号码」【不归并】—— 它们要命中 SyncUnion 的忽略名单整列跳过；
+     *       若归并成「发薪单位」「联系电话」就跳过不生效了。「发薪公司」「手机号」是另一种写法，仍归并。
      */
-    private static String colKey(Object headerText, int pos) {
-        String norm = removeSpaces(headerText != null ? headerText.toString() : "");
-        return norm.isEmpty() ? "__pos_" + pos + "__" : norm;
+    public static String aliasName(String h) {
+        if (h == null) return "";
+        switch (h) {
+            case "个税扣款":
+                return "个税";
+            case "入职日期":
+                return "入职时间";
+            case "离职日期":
+                return "离职时间";
+            case "发薪公司":
+                return "发薪单位";
+            case "手机号":
+                return "联系电话";
+            case "预支":
+            case "预支扣回":
+                return "预支扣款";
+            default:
+                // 带月份戳的表头（如「个税申报所属期:2026年8月」）按前缀归一
+                if (h.startsWith("个税申报所属期")) return "个税申报所属期";
+                return h;
+        }
+    }
+
+    /** 源表某列的表头 → 本地列名；返回 "" 表示无表头（该列跳过） */
+    private static String localName(Object hdrVal) {
+        if (hdrVal == null) return "";
+        String h = removeSpaces(hdrVal.toString().trim());
+        if (h.isEmpty()) return "";
+        h = aliasName(h);
+        // 与生成列同名的源列 → 加「(源)」后缀另立一列，避免覆盖生成结果
+        if ("文件名".equals(h) || "项目".equals(h) || "手续费".equals(h) || "采用/不采用".equals(h)) {
+            h = h + "(源)";
+        }
+        return h;
+    }
+
+    /** 列名表 → 索引（列名 → 1-based 列号） */
+    private static Map<String, Integer> indexOfNames(List<String> names) {
+        Map<String, Integer> m = new LinkedHashMap<>();
+        for (int i = 0; i < names.size(); i++) {
+            m.put(names.get(i), i + 1);
+        }
+        return m;
+    }
+
+    /** 取行内单元格（1-based 列号），越界返回 null */
+    private static Object cell(List<Object> row, int col1Based) {
+        if (col1Based <= 0 || col1Based > row.size()) return null;
+        return row.get(col1Based - 1);
+    }
+
+    /** 该列（0-based）在数据行中是否有非空值 */
+    private static boolean columnHasData(List<List<Object>> rows, int col0) {
+        for (List<Object> r : rows) {
+            if (col0 < r.size()) {
+                Object v = r.get(col0);
+                if (v != null && !removeSpaces(v.toString().trim()).isEmpty()) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 身份证文本化：空保持空；数值转全位数字符串（避免 18 位变科学计数法） */
+    private static Object idText(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number) return formatNumberValue(v);
+        String s = v.toString();
+        return s.isEmpty() ? null : s;
+    }
+
+    /**
+     * 新列插入位置（对齐 VBA SyncUnion）：
+     *   左右邻相邻 → 插中间；不相邻 → 以左邻为准；只有一侧 → 紧邻该侧
+     */
+    private static int resolveInsertPos(String[] loc, int s, int srcCols,
+                                        Map<String, Integer> uDict, List<String> uNames) {
+        String pName = "";
+        String nName = "";
+        for (int j = s - 1; j >= 2; j--) {
+            if (loc[j] != null && !loc[j].isEmpty() && uDict.containsKey(loc[j])) {
+                pName = loc[j];
+                break;
+            }
+        }
+        for (int j = s + 1; j <= srcCols; j++) {
+            if (loc[j] != null && !loc[j].isEmpty() && uDict.containsKey(loc[j])) {
+                nName = loc[j];
+                break;
+            }
+        }
+        if (!pName.isEmpty() && !nName.isEmpty()) {
+            int pIdx = uDict.get(pName);
+            int nIdx = uDict.get(nName);
+            if (nIdx == pIdx + 1) return pIdx + 1;   // 左右邻相邻 → 插中间
+            return nIdx > pIdx ? pIdx + 1 : nIdx;    // 列序异常时以较靠前者为准
+        }
+        if (!pName.isEmpty()) return uDict.get(pName) + 1;
+        if (!nName.isEmpty()) return uDict.get(nName);
+        // 两侧都没有可定位的列 → 放在标记列之前（标记列恒在末位）
+        return "采用/不采用".equals(uNames.get(uNames.size() - 1)) ? uNames.size() : uNames.size() + 1;
+    }
+
+    /**
+     * 列尾压缩（对齐 VBA CompactTailColumns）：
+     *   删掉「最后一个有效列」右侧的空列，使「采用/不采用」紧跟数据。
+     *   只裁尾部 —— 中间空列保留，保证跨月列序稳定。
+     */
+    private static void compactTailColumns(List<String> uNames, List<List<Object>> rows) {
+        int tagIdx = uNames.indexOf("采用/不采用") + 1;      // 1-based
+        if (tagIdx <= 1 || tagIdx != uNames.size()) return;  // 防御：标记列不在末位时不动手
+
+        int lastData = 0;
+        for (int c = tagIdx - 1; c >= 1; c--) {
+            String nm = uNames.get(c - 1);
+            if (KEEP_COLUMNS.contains(nm)) {
+                lastData = c;
+                break;
+            }
+            if (columnHasData(rows, c - 1)) {
+                lastData = c;
+                break;
+            }
+        }
+        if (lastData == 0 || lastData >= tagIdx - 1) return;  // 无尾部空列 → 零改动
+
+        for (int c = tagIdx - 1; c >= lastData + 1; c--) {
+            uNames.remove(c - 1);
+            for (List<Object> r : rows) {
+                if (c - 1 < r.size()) r.remove(c - 1);
+            }
+        }
     }
 
     /** 读取工作表所有行数据为 Object[][] */
@@ -1097,16 +1303,5 @@ public class HbgsService {
         List<String> list = new ArrayList<>(set);
         Collections.sort(list);
         return list;
-    }
-
-    /** 内部数据类：文件与 PayrollData 的绑定 */
-    private static class FileDataEntry {
-        final File file;
-        final PayrollData data;
-
-        FileDataEntry(File file, PayrollData data) {
-            this.file = file;
-            this.data = data;
-        }
     }
 }

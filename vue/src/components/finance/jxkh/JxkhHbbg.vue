@@ -157,6 +157,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'JxkhHbbg',
@@ -291,7 +292,7 @@ export default {
       this.loading = true
       this.message = ''
       this.downloadFileName = ''
-      axios.post(endpoint, formData).then(res => {
+      postAsync(endpoint, formData).then(res => {
         if (res.data.success) {
           this.showMessage(res.data.message, 'success')
           this.downloadFileName = res.data.fileName

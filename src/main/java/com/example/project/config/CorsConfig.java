@@ -1,5 +1,6 @@
 package com.example.project.config;
 
+import jakarta.servlet.Filter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,18 +21,23 @@ public class CorsConfig {
     @Value("${cors.allowed-origins:}")
     private String allowedOrigins;
 
+    /**
+     * 仅在配置了允许来源时才启用 CORS 校验。
+     * 未配置时返回透传空过滤器（等同不启用 CORS）：
+     * 同域部署下浏览器 POST 也会携带 Origin 头，若注册全局 CorsFilter 而白名单
+     * 不含本站来源，所有 API 请求都会被 403 拦截（2026-10-15 事故）。
+     * 注意不能返回 null——@Bean 返回 null 会被登记为 NullBean，
+     * Spring Boot 按 Filter 类型收集过滤器时启动直接报错。
+     */
     @Bean
-    public CorsFilter corsFilter() {
-        CorsConfiguration config = new CorsConfiguration();
-
-        // 仅当配置了允许来源时才启用 CORS（前后端同域部署时无需设置）
-        if (allowedOrigins != null && !allowedOrigins.isBlank()) {
-            List<String> origins = Arrays.asList(allowedOrigins.split(","));
-            origins.forEach(config::addAllowedOrigin);
-        } else {
-            // 默认不启用跨域（同域部署），仅保留本地开发回退
-            config.addAllowedOrigin("http://localhost:8081");
+    public Filter corsFilter() {
+        if (allowedOrigins == null || allowedOrigins.isBlank()) {
+            return (request, response, chain) -> chain.doFilter(request, response);
         }
+
+        CorsConfiguration config = new CorsConfiguration();
+        List<String> origins = Arrays.asList(allowedOrigins.split(","));
+        origins.forEach(config::addAllowedOrigin);
 
         config.addAllowedMethod("*");
         config.addAllowedHeader("*");

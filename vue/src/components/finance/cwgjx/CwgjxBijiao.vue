@@ -127,6 +127,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'CwgjxBijiao',
@@ -198,7 +199,7 @@ export default {
       formData.append('sheet2Name', this.formCompare.sheet2Name)
       formData.append('startDate', this.formCompare.startDate)
       formData.append('endDate', this.formCompare.endDate)
-      axios.post('/api/finance/toolbox/data-compare', formData, {
+      postAsync('/api/finance/toolbox/data-compare', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       }).then(res => {
         if (res.data.success) {

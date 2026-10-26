@@ -3,8 +3,10 @@ package com.example.project;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+@EnableScheduling   // 任务中心 10 分钟自动清理调度
 public class ProjectApplication {
 
     public static void main(String[] args) {

@@ -5,6 +5,7 @@ import com.example.project.service.finance.cxm.CheckProcessor;
 import com.example.project.service.finance.cxm.HsHuizongCxmChecker;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,6 +79,7 @@ public class HsHuizongCxmCheckerController extends FinanceBaseController {
      * POST /api/finance/check/disbursement
      * 功能：汇总发放记录表（核对Tab - 区域A）
      * 供应商名称列自动检测，无需传入colC
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/check/disbursement")
     public Map<String, Object> checkDisbursement(
@@ -85,27 +87,22 @@ public class HsHuizongCxmCheckerController extends FinanceBaseController {
             @RequestParam("sheetName") String sheetName,
             @RequestParam("colH") int colH,
             @RequestParam(value = "selectedMonths", required = false) String selectedMonths,
-            @RequestParam(value = "selectedTypes", required = false) String selectedTypes) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            String outputPath = checkProcessor.processDisbursement(file, sheetName, colH,
-                    selectedMonths, selectedTypes, uploadDir);
-            result.put("success", true);
-            result.put("message", "发放记录表汇总完成");
-            result.put("fileName", new File(outputPath).getName());
-
-            // 返回预览数据（前50行）
-            Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
-            result.put("previewColumns", preview.get("columns"));
-            result.put("previewData", preview.get("data"));
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "selectedTypes", required = false) String selectedTypes,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "check/disbursement", "发放记录汇总",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = checkProcessor.processDisbursement(safeFile, sheetName, colH,
+                            selectedMonths, selectedTypes, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "发放记录表汇总完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
+                    result.put("previewColumns", preview.get("columns"));
+                    result.put("previewData", preview.get("data"));
+                    return result;
+                });
     }
 
     /**
@@ -116,26 +113,21 @@ public class HsHuizongCxmCheckerController extends FinanceBaseController {
     public Map<String, Object> checkStatement(
             @RequestParam("file") MultipartFile file,
             @RequestParam("sheetName") String sheetName,
-            @RequestParam(value = "selectedMonths", required = false) String selectedMonths) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            String outputPath = checkProcessor.processStatement(file, sheetName, selectedMonths, uploadDir);
-            result.put("success", true);
-            result.put("message", "对账单汇总完成");
-            result.put("fileName", new File(outputPath).getName());
-
-            // 返回预览数据（前50行）
-            Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
-            result.put("previewColumns", preview.get("columns"));
-            result.put("previewData", preview.get("data"));
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "selectedMonths", required = false) String selectedMonths,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "check/statement", "对账单汇总",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = checkProcessor.processStatement(safeFile, sheetName, selectedMonths, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "对账单汇总完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
+                    result.put("previewColumns", preview.get("columns"));
+                    result.put("previewData", preview.get("data"));
+                    return result;
+                });
     }
 
     /**
@@ -144,104 +136,79 @@ public class HsHuizongCxmCheckerController extends FinanceBaseController {
      * 支持两种方式：
      * 1. 上传文件（disbursementFile, statementFile）
      * 2. 通过文件名从服务器获取（disbursementFileName, statementFileName）
+     * 异步化：请求线程内解析两输入路径，提交 taskId，后台线程池执行核对
      */
     @PostMapping("/check/reconcile")
     public Map<String, Object> checkReconcile(
             @RequestParam(value = "disbursementFile", required = false) MultipartFile disbursementFile,
             @RequestParam(value = "statementFile", required = false) MultipartFile statementFile,
             @RequestParam(value = "disbursementFileName", required = false) String disbursementFileName,
-            @RequestParam(value = "statementFileName", required = false) String statementFileName) {
-        Map<String, Object> result = new HashMap<>();
-        File disbursementTemp = null;
-        File statementTemp = null;
+            @RequestParam(value = "statementFileName", required = false) String statementFileName,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
             File dir = new File(uploadDir);
             if (!dir.exists()) dir.mkdirs();
 
-            // 处理发放记录汇总表
-            String disbursementPath = null;
-            if (disbursementFile != null && !disbursementFile.isEmpty()) {
-                // 方式1：上传文件
-                disbursementTemp = new File(dir, UUID.randomUUID() + "_disbursement.xlsx");
-                try (InputStream in = disbursementFile.getInputStream();
-                     OutputStream out = new FileOutputStream(disbursementTemp)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                }
-                disbursementPath = disbursementTemp.getAbsolutePath();
-            } else if (disbursementFileName != null && !disbursementFileName.isEmpty()) {
-                // 方式2：通过文件名从服务器获取
-                File f = new File(uploadDir, disbursementFileName);
-                if (f.exists()) {
-                    disbursementPath = f.getAbsolutePath();
-                } else {
-                    result.put("success", false);
-                    result.put("message", "发放记录汇总表文件不存在：" + disbursementFileName);
-                    return result;
-                }
-            } else {
-                result.put("success", false);
-                result.put("message", "请上传发放记录汇总表或提供文件名");
-                return result;
+            // 请求线程内解析/落盘两输入文件（异步线程不能碰 MultipartFile）
+            String disbursementPath = resolveInputPath(disbursementFile, disbursementFileName, dir, "_disbursement");
+            if (disbursementPath == null) {
+                Map<String, Object> err = new HashMap<>();
+                err.put("success", false);
+                err.put("message", "请上传发放记录汇总表或提供文件名");
+                return err;
             }
-
-            // 处理对账单汇总表
-            String statementPath = null;
-            if (statementFile != null && !statementFile.isEmpty()) {
-                // 方式1：上传文件
-                statementTemp = new File(dir, UUID.randomUUID() + "_statement.xlsx");
-                try (InputStream in = statementFile.getInputStream();
-                     OutputStream out = new FileOutputStream(statementTemp)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                }
-                statementPath = statementTemp.getAbsolutePath();
-            } else if (statementFileName != null && !statementFileName.isEmpty()) {
-                // 方式2：通过文件名从服务器获取
-                File f = new File(uploadDir, statementFileName);
-                if (f.exists()) {
-                    statementPath = f.getAbsolutePath();
-                } else {
-                    result.put("success", false);
-                    result.put("message", "对账单汇总表文件不存在：" + statementFileName);
-                    return result;
-                }
-            } else {
-                result.put("success", false);
-                result.put("message", "请上传对账单汇总表或提供文件名");
-                return result;
+            String statementPath = resolveInputPath(statementFile, statementFileName, dir, "_statement");
+            if (statementPath == null) {
+                Map<String, Object> err = new HashMap<>();
+                err.put("success", false);
+                err.put("message", "请上传对账单汇总表或提供文件名");
+                return err;
             }
-
-            // 执行核对
-            String outputPath = checkProcessor.reconcile(
-                    disbursementPath,
-                    statementPath,
-                    uploadDir);
-
-            result.put("success", true);
-            result.put("message", "核对完成");
-            result.put("fileName", new File(outputPath).getName());
-
-            // 返回预览数据（前50行）
-            Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
-            result.put("previewColumns", preview.get("columns"));
-            result.put("previewData", preview.get("data"));
+            final String disp = disbursementPath;
+            final String stmt = statementPath;
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "check/reconcile", "执行核对",
+                    null, () -> {
+                        String outputPath = checkProcessor.reconcile(disp, stmt, uploadDir);
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "核对完成");
+                        result.put("fileName", new File(outputPath).getName());
+                        Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
+                        result.put("previewColumns", preview.get("columns"));
+                        result.put("previewData", preview.get("data"));
+                        return result;
+                    });
         } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "核对失败：" + e.getMessage());
-        } finally {
-            // 清理临时文件（仅当使用上传方式时）
-            if (disbursementTemp != null && disbursementTemp.exists()) disbursementTemp.delete();
-            if (statementTemp != null && statementTemp.exists()) statementTemp.delete();
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "核对失败：" + e.getMessage());
+            return err;
         }
-        return result;
+    }
+
+    /** 上传文件→落盘临时文件取绝对路径；否则 fileName→uploads 下已有文件；都无返回 null */
+    private String resolveInputPath(MultipartFile file, String fileName, File dir, String tag) throws Exception {
+        if (file != null && !file.isEmpty()) {
+            File temp = new File(dir, UUID.randomUUID() + tag + ".xlsx");
+            try (InputStream in = file.getInputStream();
+                 OutputStream out = new FileOutputStream(temp)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            }
+            return temp.getAbsolutePath();
+        }
+        if (fileName != null && !fileName.isEmpty()) {
+            File f = new File(uploadDir, fileName);
+            if (f.exists()) return f.getAbsolutePath();
+            throw new IllegalArgumentException("文件不存在：" + fileName);
+        }
+        return null;
     }
 
     /**
      * POST /api/finance/summary/check
      * 前端第二步：传入汇总结果文件名和待核对文件，传入用户选择的月份和介绍人，执行核对
+     * 异步化：提交即返回 taskId，后台线程池执行
      */
     @PostMapping("/summary/check")
     public Map<String, Object> summaryCheck(
@@ -249,41 +216,37 @@ public class HsHuizongCxmCheckerController extends FinanceBaseController {
             @RequestParam("checkFile") MultipartFile checkFile,
             @RequestParam("checkSheet") String checkSheet,
             @RequestParam("selectedMonth") String selectedMonth,
-            @RequestParam("selectedPersons") String selectedPersons) {
-        Map<String, Object> result = new HashMap<>();
+            @RequestParam("selectedPersons") String selectedPersons,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
         try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            // 从 uploadDir 读取基准表文件
-            File refFile = new File(uploadDir, refFileName);
-            if (!refFile.exists()) {
-                result.put("success", false);
-                result.put("message", "基准表文件不存在：" + refFileName);
-                return result;
-            }
-
-            // 加载基准表
-            hsHuizongCxmChecker.loadReference(refFile);
-
-            // 解析选择的介绍人
+            // 请求线程内固化 checkFile（异步线程安全）
+            com.example.project.task.MemoryMultipartFile check = pin(checkFile);
             List<String> persons = Arrays.asList(selectedPersons.split(","));
-
-            // 执行核对
-            String outputPath = hsHuizongCxmChecker.executeCheck(
-                    checkFile, checkSheet, selectedMonth, persons,
-                    dir.getAbsolutePath());
-            result.put("success", true);
-            result.put("message", "核对完成");
-            result.put("fileName", new File(outputPath).getName());
-            // 返回预览数据（前50行）
-            Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
-            result.put("previewColumns", preview.get("columns"));
-            result.put("previewData", preview.get("data"));
+            return taskService.submitAndRespond(deviceId(deviceIdHeader), "finance", "summary/check", "汇总核对",
+                    checkFile.getOriginalFilename(),
+                    () -> {
+                        File dir = new File(uploadDir);
+                        if (!dir.exists()) dir.mkdirs();
+                        File refFile = new File(uploadDir, refFileName);
+                        if (!refFile.exists()) {
+                            throw new IllegalArgumentException("基准表文件不存在：" + refFileName);
+                        }
+                        hsHuizongCxmChecker.loadReference(refFile);
+                        String outputPath = hsHuizongCxmChecker.executeCheck(
+                                check, checkSheet, selectedMonth, persons, dir.getAbsolutePath());
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("message", "核对完成");
+                        result.put("fileName", new File(outputPath).getName());
+                        Map<String, Object> preview = readExcelPreview(new File(outputPath), 50);
+                        result.put("previewColumns", preview.get("columns"));
+                        result.put("previewData", preview.get("data"));
+                        return result;
+                    });
         } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "核对失败：" + e.getMessage());
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "核对失败：" + e.getMessage());
+            return err;
         }
-        return result;
     }
 }

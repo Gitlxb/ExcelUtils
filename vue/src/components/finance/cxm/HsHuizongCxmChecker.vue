@@ -207,6 +207,7 @@
 
 <script>
 import axios from 'axios'
+import { postAsync } from '../../../utils/asyncTask'
 
 export default {
   name: 'HsHuizongCxmChecker',
@@ -347,7 +348,7 @@ export default {
         formData.append('selectedTypes', this.selectedTypes.join(','))
       }
       try {
-        const res = await axios.post('/api/finance/check/disbursement', formData)
+        const res = await postAsync('/api/finance/check/disbursement', formData)
         if (res.data.success) {
           this.disbursementFileName = res.data.fileName
           this.previewColumns = res.data.previewColumns || []
@@ -394,7 +395,7 @@ export default {
       formData.append('file', this.statementFile)
       formData.append('sheetName', this.selectedStatementSheet)
       try {
-        const res = await axios.post('/api/finance/check/statement', formData)
+        const res = await postAsync('/api/finance/check/statement', formData)
         if (res.data.success) {
           this.statementFileName = res.data.fileName
           this.previewColumns = res.data.previewColumns || []
@@ -422,7 +423,7 @@ export default {
       formData.append('disbursementFileName', this.disbursementFileName)
       formData.append('statementFileName', this.statementFileName)
       try {
-        const res = await axios.post('/api/finance/check/reconcile', formData)
+        const res = await postAsync('/api/finance/check/reconcile', formData)
         if (res.data.success) {
           this.reconcileFileName = res.data.fileName
           this.previewColumns = res.data.previewColumns || []

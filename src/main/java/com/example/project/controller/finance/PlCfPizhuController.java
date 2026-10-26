@@ -22,42 +22,36 @@ public class PlCfPizhuController extends FinanceBaseController {
     /**
      * POST /api/finance/comment/add
      * 功能：批量添加批注（pl_cf_pizhu.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/comment/add")
-    public Map<String, Object> commentAdd(@RequestParam("file") MultipartFile file) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = plCfPizhuService.addComments(file, uploadDir);
-            result.put("success", true);
-            result.put("message", "批注添加完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+    public Map<String, Object> commentAdd(
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "comment/add", "批量批注添加",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = plCfPizhuService.addComments(safeFile, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "批注添加完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
-
-    /**
-     * POST /api/finance/comment/split
-     * 功能：批量拆分批注（pl_cf_pizhu.py）
-     */
     @PostMapping("/comment/split")
-    public Map<String, Object> commentSplit(@RequestParam("file") MultipartFile file) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = plCfPizhuService.splitComments(file, uploadDir);
-            result.put("success", true);
-            result.put("message", "批注拆分完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+    public Map<String, Object> commentSplit(
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "comment/split", "批量批注拆分",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = plCfPizhuService.splitComments(safeFile, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "批注拆分完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 }

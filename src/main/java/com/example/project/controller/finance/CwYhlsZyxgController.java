@@ -21,7 +21,7 @@ public class CwYhlsZyxgController extends FinanceBaseController {
 
     /**
      * POST /api/finance/bank-flow/detect
-     * 功能：银行流水-检测列配置
+     * 功能：银行流水-检测列配置（秒级辅助接口，保持同步）
      */
     @PostMapping("/bank-flow/detect")
     public Map<String, Object> bankFlowDetect(@RequestParam("file") MultipartFile file) {
@@ -38,6 +38,7 @@ public class CwYhlsZyxgController extends FinanceBaseController {
     /**
      * POST /api/finance/bank-flow/process
      * 功能：银行流水-执行处理（cw_yhls_zyxg.py）
+     * 异步化：提交即返回 taskId，后台线程池执行，前端轮询 /api/tasks/{taskId}
      */
     @PostMapping("/bank-flow/process")
     public Map<String, Object> bankFlowProcess(
@@ -46,21 +47,17 @@ public class CwYhlsZyxgController extends FinanceBaseController {
             @RequestParam("selectedCompany") String selectedCompany,
             @RequestParam(value = "inputNameFilter", required = false) String inputNameFilter,
             @RequestParam(value = "inputSummaryText", required = false) String inputSummaryText,
-            @RequestParam(value = "inputSummary", required = false) String inputSummary) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-            String outputPath = cwYhlsZyxgService.process(
-                    file, selectedAs, selectedCompany,
-                    inputNameFilter, inputSummaryText, inputSummary, uploadDir);
-            result.put("success", true);
-            result.put("message", "银行流水处理完成");
-            result.put("fileName", new File(outputPath).getName());
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "处理失败：" + e.getMessage());
-        }
-        return result;
+            @RequestParam(value = "inputSummary", required = false) String inputSummary,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceIdHeader) {
+        return doSubmitAsync(file, deviceId(deviceIdHeader), "finance", "bank-flow/process", "银行流水处理",
+                safeFile -> {
+                    File dir = new File(uploadDir);
+                    if (!dir.exists()) dir.mkdirs();
+                    String outputPath = cwYhlsZyxgService.process(safeFile, selectedAs, selectedCompany, inputNameFilter, inputSummaryText, inputSummary, uploadDir);
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("message", "银行流水处理完成");
+                    result.put("fileName", new File(outputPath).getName());
+                    return result;
+                });
     }
 }

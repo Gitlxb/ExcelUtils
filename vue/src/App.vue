@@ -11,9 +11,6 @@
         class="sidebar-menu"
         @select="handleMenuSelect"
       >
-        <el-menu-item index="/">
-          <el-icon><HomeFilled /></el-icon><span>主页</span>
-        </el-menu-item>
         <el-sub-menu index="general">
           <template #title>
             <el-icon><FolderOpened /></el-icon><span>通用功能</span>
@@ -65,12 +62,43 @@
           <el-sub-menu index="hr-doc-toolbox">
             <template #title><span>文档处理工具箱</span></template>
             <el-menu-item index="/hr/gzbcf-split">工资表拆分</el-menu-item>
+            <el-menu-item index="/hr/xxj-split">孝心金拆分</el-menu-item>
             <el-menu-item index="/hr/word-merge">Word文档合并</el-menu-item>
           </el-sub-menu>
           <el-menu-item index="/hr/gzb-pipei">工资表匹配</el-menu-item>
         </el-sub-menu>
       </el-menu>
+
+      <!-- 任务中心入口（底部固定） -->
+      <div class="task-center-entry" @click="openTaskCenter">
+        <el-badge :value="runningCount" :hidden="runningCount === 0" :max="99" class="task-badge">
+          <el-icon :size="20"><List /></el-icon>
+        </el-badge>
+        <span class="task-entry-text">任务中心</span>
+        <span v-if="runningCount > 0" class="task-entry-running">{{ runningCount }} 处理中</span>
+      </div>
     </el-aside>
+
+    <!-- 任务中心抽屉 -->
+    <el-drawer v-model="taskDrawerVisible" title="任务中心" size="420px" :append-to-body="true">
+      <div v-if="taskList.length === 0" class="task-empty">暂无任务</div>
+      <div v-for="t in taskList" :key="t.taskId" class="task-item">
+        <div class="task-item-head">
+          <span class="task-item-name">{{ t.displayName || t.apiName }}</span>
+          <el-tag :type="statusTag(t.status)" size="small">{{ statusText(t.status) }}</el-tag>
+        </div>
+        <div class="task-item-meta">
+          <span v-if="t.originalFileName" class="task-item-file">{{ t.originalFileName }}</span>
+          <span class="task-item-time">{{ fmtTime(t.createTime) }}</span>
+        </div>
+        <div v-if="t.status === 'FAILED' && t.message" class="task-item-err">{{ t.message }}</div>
+        <div v-if="t.status === 'SUCCESS' && t.result && t.result.fileName" class="task-item-done">
+          结果：{{ t.result.fileName }}
+          <el-button type="primary" size="small" @click="downloadTaskResult(t)">下载</el-button>
+        </div>
+        <el-divider v-if="t !== taskList[taskList.length - 1]" style="margin:8px 0" />
+      </div>
+    </el-drawer>
 
     <!-- 右侧主内容 -->
     <el-main class="app-main">
@@ -96,20 +124,75 @@
 </template>
 
 <script>
+import axios from 'axios'
 import AiChatBot from './components/AiChatBot.vue'
 
 export default {
   name: 'App',
   components: { AiChatBot },
+  data() {
+    return {
+      taskDrawerVisible: false,
+      taskList: [],
+      runningCount: 0,
+      taskPollTimer: null,
+      taskDrawerTimer: null
+    }
+  },
   computed: {
     activeMenu() {
       return this.$route.path
     }
   },
+  mounted() {
+    this.refreshTaskBadge()
+    // 后台每 5s 刷新一次角标（仅刷新计数，开销小）
+    this.taskPollTimer = setInterval(this.refreshTaskBadge, 5000)
+  },
+  beforeUnmount() {
+    if (this.taskPollTimer) clearInterval(this.taskPollTimer)
+    if (this.taskDrawerTimer) clearInterval(this.taskDrawerTimer)
+  },
   methods: {
     handleMenuSelect(index) {
       if (this.$route.path !== index) {
         this.$router.push(index)
+      }
+    },
+
+    async refreshTaskBadge() {
+      try {
+        const res = await axios.get('/api/tasks')
+        const list = (res.data && res.data.tasks) || []
+        this.runningCount = list.filter(t => t.status === 'RUNNING' || t.status === 'PENDING').length
+        if (this.taskDrawerVisible) this.taskList = list
+      } catch (e) { /* 忽略 */ }
+    },
+
+    openTaskCenter() {
+      this.taskDrawerVisible = true
+      this.refreshTaskBadge()
+      // 抽屉打开期间每 3s 刷新列表
+      if (this.taskDrawerTimer) clearInterval(this.taskDrawerTimer)
+      this.taskDrawerTimer = setInterval(this.refreshTaskBadge, 3000)
+    },
+
+    statusText(s) {
+      return { PENDING: '排队中', RUNNING: '处理中', SUCCESS: '已完成', FAILED: '失败' }[s] || s
+    },
+    statusTag(s) {
+      return { PENDING: 'info', RUNNING: 'warning', SUCCESS: 'success', FAILED: 'danger' }[s] || 'info'
+    },
+    fmtTime(ms) {
+      if (!ms) return ''
+      const d = new Date(ms)
+      const p = n => (n < 10 ? '0' + n : '' + n)
+      return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+    },
+    downloadTaskResult(t) {
+      if (t && t.result && t.result.fileName) {
+        const module = t.module || 'general'
+        window.location.href = `/api/${module}/download/${encodeURIComponent(t.result.fileName)}`
       }
     }
   }
@@ -171,5 +254,87 @@ body { margin: 0; font-family: 'Microsoft YaHei', sans-serif; }
   background: #f0f2f5;
   padding: 20px;
   overflow-y: auto;
+}
+
+/* ===== 任务中心入口（侧栏底部） ===== */
+.task-center-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  color: #bfcbd9;
+  cursor: pointer;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  transition: background .2s;
+}
+.task-center-entry:hover {
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+}
+.task-center-entry .task-entry-text {
+  font-size: 14px;
+}
+.task-center-entry .task-entry-running {
+  font-size: 12px;
+  color: #e6a23c;
+  margin-left: auto;
+}
+.task-badge {
+  display: inline-flex;
+}
+.task-badge :deep(.el-badge__content) {
+  background: #e6a23c;
+  border: none;
+  font-size: 11px;
+}
+
+/* ===== 任务中心抽屉 ===== */
+.task-empty {
+  color: #909399;
+  text-align: center;
+  padding: 48px 0;
+  font-size: 14px;
+}
+.task-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.task-item-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.task-item-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+.task-item-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+.task-item-err {
+  color: #f56c6c;
+  font-size: 13px;
+  margin: 4px 0;
+  word-break: break-all;
+}
+.task-item-done {
+  font-size: 13px;
+  color: #67c23a;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  word-break: break-all;
+}
+.task-item-done .el-button {
+  margin-left: 12px;
+  flex-shrink: 0;
 }
 </style>
